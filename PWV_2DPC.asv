@@ -295,19 +295,19 @@ function loadROIbutton_Callback(hObject, eventdata, handles)
     roiMask = sqrt(X.^2 + Y.^2)<=radius; %anything outside radius is ignored
 
     %%% Create Linear Interpolated Data
-    if isfield(handles.pcDatasets(planeNum).Info,'matrixx') %if radial data (pcvipr recon)
+    if isfield(handles.pcDatasets(planeNum).Info,'matrixx') %if we're dealing with radial data (pcvipr recon)
         matrixx = handles.pcDatasets(planeNum).Info.matrixx; %matrix size in x dimension
         fovx = handles.pcDatasets(planeNum).Info.fovx;  %field of view (mm)
         xres = fovx/matrixx; %resolution (mm). ASSUMED TO BE SAME IN Y DIMENSION
         frames = handles.pcDatasets(planeNum).Info.frames;
         timeres = handles.pcDatasets(planeNum).Info.timeres; %temporal resolution (ms)
     else 
-%         xres = handles.pcDatasets(planeNum).Info.PixelSpacing(1); %resolution (mm) ASSUMED SAME IN Y DIM
-%         rrInterval = handles.pcDatasets(planeNum).Info.NominalInterval; %average RR interval (ms)
-%         frames = handles.pcDatasets(planeNum).Info.CardiacNumberOfImages; %number of cardiac frames
-%         timeres = rrInterval/frames; %temporal resolution (ms)
-        xres = handles.pcDatasets(planeNum).Info.PixelSpacing(1); %resolution (mm) ASSUMED SAME IN Y DIM
-        rrInterval = handles.pcDatasets(1).Info.NominalInterval; %avg RR int. (ms) TAKE FIRST TO MATCH TEMP RES
+        xres = handles.pcDatasets(planeNum).Info.PixelSpacing(1); %resolution (mm). ASSUMED TO BE SAME IN Y DIMENSION
+        %lowRR = handles.pcDatasets(planeNum).Info.LowRRValue;
+        %highRR = handles.pcDatasets(planeNum).Info.HighRRValue;
+        %rrInterval = mean(lowRR,highRR);
+        %frames = size(v,3);
+        rrInterval = handles.pcDatasets(planeNum).Info.NominalInterval; %average RR interval (ms)
         frames = handles.pcDatasets(planeNum).Info.CardiacNumberOfImages; %number of cardiac frames
         timeres = rrInterval/frames; %temporal resolution (ms)
     end 
@@ -322,9 +322,9 @@ function loadROIbutton_Callback(hObject, eventdata, handles)
     end 
 
     times = double(timeres.*(0:(frames-1))); %original times
-%     tq = 0:0.1:size(v,3)-1; %interpolate time dimension
-    sampleDensity = 600;
-    tq = linspace(0,frames-1,sampleDensity); %interpolate time dimension
+    tq = 0:0.1:size(v,3)-1; %interpolate time dimension
+%     sampleDensity = 600;
+%     tq = linspace(0,frames-1,sampleDensity); %interpolate time dimension
     timesInterp = double(timeres.*tq); %interpolated times
 
     %Linear interpolation (to get more points on flow curve)
@@ -1075,15 +1075,15 @@ function plotVelocity(handles)
                 switch handles.global.interpType %check what interpolation we are using
                     case 'None'
                         velocity = handles.pcDatasets(i).ROIdataUninterp(j).meanROI; %grab mean velocity
-                        %times = handles.pcDatasets(i).ROIdataUninterp(j).times;
+                        times = handles.pcDatasets(i).ROIdataUninterp(j).times;
                         stdv = handles.pcDatasets(i).ROIdataUninterp(j).stdvROI; %grab stdv of velocity
                     case 'Gaussian'
                         velocity = handles.pcDatasets(i).ROIdataGaussian(j).meanROI;
-                        %times = handles.pcDatasets(i).ROIdataUninterp(j).times;
+                        times = handles.pcDatasets(i).ROIdataUninterp(j).times;
                         stdv = handles.pcDatasets(i).ROIdataGaussian(j).stdvROI;
                     case 'Spline'
                         velocity = handles.pcDatasets(i).ROIdataSpline(j).meanROI;
-                        %times = handles.pcDatasets(i).ROIdataUninterp(j).times;
+                        times = handles.pcDatasets(i).ROIdataUninterp(j).times;
                         stdv = handles.pcDatasets(i).ROIdataSpline(j).stdvROI;
                     otherwise
                 end 
