@@ -961,10 +961,11 @@ function flow = computeTTs(flow,globals)
             flowTemp = circshift(flowTemp,round(length(flowTemp)/2)); %shift by half cycle
         end 
                 
-        times = flow(i).Uninterp.times; %get time frames (ms)
+%         times = flow(i).Uninterp.times; %get time frames (ms)
+        times = flow(1).Uninterp.times;
         timeres = times(2)-times(1); %temporal resolution (ms)
-        curvePoints(i).times = times;
-        curvePoints(i).timeres = timeres;
+%         curvePoints(i).times = times;
+%         curvePoints(i).timeres = timeres;
         
         [maxPeakVel,maxPeakVelIdx] = max(flowTemp); %find max velocity value and its location
         upstroke = flowTemp(1:maxPeakVelIdx); %define 'upstroke' region of the flow curve
@@ -1017,8 +1018,7 @@ function flow = computeTTs(flow,globals)
         dt2 = -(p2(2)/p2(1));
         flow(i-1).TTFoot = dt2-dt1; %add to flow struct
     end  
-   
-    
+  
     % XCorr - cross correlation calculation
     for i=2:numROIs
         minTimeres = min([curvePoints(i-1).timeres curvePoints(i).timeres]);
