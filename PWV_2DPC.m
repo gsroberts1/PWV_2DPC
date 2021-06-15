@@ -154,7 +154,7 @@ function load2DPCbutton_Callback(hObject, eventdata, handles)
         fclose(fid);
         dataArray{1,2} = cellfun(@str2num,dataArray{1,2}(:),'UniformOutput',false);
         pcviprHeader = cell2struct(dataArray{1,2}(:),dataArray{1,1}(:),1); %turn to structure
-        handles.pcDatasets(pcDataIter).Info = pcviprHeader; %add pcvipr header to handles
+        handles.pcDatasets(pcIter).Info = pcviprHeader; %add pcvipr header to handles
         resx = pcviprHeader.matrixx; %resolution in x
         resy = pcviprHeader.matrixy; %resolution in y
         nframes = pcviprHeader.frames; %number of cardiac frames
@@ -172,12 +172,12 @@ function load2DPCbutton_Callback(hObject, eventdata, handles)
             v(:,:,j) = load_dat(fullfile(pcDir,['\ph_' num2str(j-1,'%03i') '_vd_3.dat']),[resx resy]);
         end
         
-        handles.pcDatasets(pcIter).Images.MAG = MAG;
-        handles.pcDatasets(pcIter).Images.CD = CD;
-        handles.pcDatasets(pcIter).Images.V = VMEAN;
-        handles.pcDatasets(pcIter).Images.mag = mag;
-        handles.pcDatasets(pcIter).Images.cd = cd;
-        handles.pcDatasets(pcIter).Images.v = v; 
+        handles.pcDatasets(pcIter).Images.MAG = flipud(MAG);
+        handles.pcDatasets(pcIter).Images.CD = flipud(CD);
+        handles.pcDatasets(pcIter).Images.V = flipud(VMEAN);
+        handles.pcDatasets(pcIter).Images.mag = flipud(mag);
+        handles.pcDatasets(pcIter).Images.cd = flipud(cd);
+        handles.pcDatasets(pcIter).Images.v = flipud(v); 
         handles.pcDatasets(pcIter).Names = ['Plane' num2str(pcIter)];
     else %if a single matlab file (with all images)
         hold = load([pcDir pcFile]);
@@ -299,14 +299,15 @@ function loadROIbutton_Callback(hObject, eventdata, handles)
         matrixx = handles.pcDatasets(planeNum).Info.matrixx; %matrix size in x dimension
         fovx = handles.pcDatasets(planeNum).Info.fovx;  %field of view (mm)
         xres = fovx/matrixx; %resolution (mm). ASSUMED TO BE SAME IN Y DIMENSION
-        frames = handles.pcDatasets(planeNum).Info.frames;
-        timeres = handles.pcDatasets(planeNum).Info.timeres; %temporal resolution (ms)
+%         frames = handles.pcDatasets(planeNum).Info.frames;
+%         timeres = handles.pcDatasets(planeNum).Info.timeres; %temporal resolution (ms)
+        frames = handles.pcDatasets(1).Info.frames;
+        timeres = handles.pcDatasets(1).Info.timeres;
     else 
-%         xres = handles.pcDatasets(planeNum).Info.PixelSpacing(1); %resolution (mm) ASSUMED SAME IN Y DIM
+        xres = handles.pcDatasets(planeNum).Info.PixelSpacing(1); %resolution (mm) ASSUMED SAME IN Y DIM
 %         rrInterval = handles.pcDatasets(planeNum).Info.NominalInterval; %average RR interval (ms)
 %         frames = handles.pcDatasets(planeNum).Info.CardiacNumberOfImages; %number of cardiac frames
 %         timeres = rrInterval/frames; %temporal resolution (ms)
-        xres = handles.pcDatasets(planeNum).Info.PixelSpacing(1); %resolution (mm) ASSUMED SAME IN Y DIM
         rrInterval = handles.pcDatasets(1).Info.NominalInterval; %avg RR int. (ms) TAKE FIRST TO MATCH TEMP RES
         frames = handles.pcDatasets(planeNum).Info.CardiacNumberOfImages; %number of cardiac frames
         timeres = rrInterval/frames; %temporal resolution (ms)
