@@ -1,4 +1,3 @@
-
 function varargout = PWV_2DPC(varargin)
     % PWV_2DPC MATLAB code for PWV_2DPC.fig
     %      PWV_2DPC, by itself, creates a new PWV_2DPC or raises the existing
@@ -528,11 +527,11 @@ function completeLoadingROI_Callback(hObject, eventdata, handles)
     end 
     
     % COMPUTE PWVs
-    distance = [handles.centerline.PlaneDistances sum(handles.centerline.PlaneDistances)];
-    TTPoint = [handles.flow.TTPoint sum([handles.flow.TTPoint])]; 
-    TTFoot = [handles.flow.TTFoot sum([handles.flow.TTFoot])]; 
-    TTUpstroke = [handles.flow.TTUpstroke sum([handles.flow.TTUpstroke])]; 
-    Xcorr = [handles.flow.Xcorr sum([handles.flow.Xcorr])];
+    distance = [0 cumsum(handles.centerline.PlaneDistances)];
+    TTPoint = [handles.flow.TTPoint]; 
+    TTFoot = [handles.flow.TTFoot]; 
+    TTUpstroke = [handles.flow.TTUpstroke]; 
+    Xcorr = [handles.flow.Xcorr];
 
     numMethods = get(handles.ttpointRadio,'Value') + ...
         get(handles.ttfRadio,'Value') + ...
@@ -576,86 +575,64 @@ function completeLoadingROI_Callback(hObject, eventdata, handles)
     end 
 
     D = max(distance);
-    T = max([TTPoint TTFoot TTUpstroke Xcorr]);
-    xlim([0 D+D*0.2]); ylim([0 T+T*0.2]);
+    Tmin = min([TTPoint TTFoot TTUpstroke Xcorr]);
+    Tmax = max([TTPoint TTFoot TTUpstroke Xcorr]);
+    xlim([0 D+D*0.2]); ylim([Tmin-Tmin*0.02 Tmax+Tmax*0.02]);
         
     average = average./numMethods; %get average TT for each ROI
     scatter(distance,average,40,'black'); %open black circles (size 40 pixels)
     legendSet{end+1} = 'AVERAGE'; %add average to legend
     
     d = 0:round(D+D*0.2);
-    if numel(distance)>1 %if we have more than 2 ROIs, need to calculate average
-        % Here, we perform linear regression to find best fit line for each
-        % time-to (TT) method. Note: lineFit(1)=slope; lineFit(2)=intercept
-        
-        %TTPoint Method
-        PointFit = polyfit(distance,TTPoint,1); %fit line to TTPoint points
-        linePoint = PointFit(1)*d + PointFit(2); %calculate line
-        
-        %TTFoot Method
-        FootFit = polyfit(distance,TTFoot,1);
-        lineFoot = FootFit(1)*d + FootFit(2);
-        
-        %TTUpstroke Method
-        UpstrokeFit = polyfit(distance,TTUpstroke,1);
-        lineUpstroke = UpstrokeFit(1)*d + UpstrokeFit(2);
-        
-        %Xcorr Method
-        XcorrFit = polyfit(distance,Xcorr,1);
-        lineXcorr = XcorrFit(1)*d + XcorrFit(2);
-        
-        %Average TT
-        AverageFit = polyfit(distance,average,1);
-        lineAverage= AverageFit(1)*d + AverageFit(2);
-        
-        PWVpoint = 1/PointFit(1); %PWV = 1/slope (mm/ms = m/s)
-        PWVfoot = 1/FootFit(1);
-        PWVupstroke = 1/UpstrokeFit(1);
-        PWVxcorr = 1/XcorrFit(1);
-        PWVaverage = 1/AverageFit(1);
-        
-        hold on; 
-        if get(handles.ttpointRadio,'Value') %if our ttpoint button is on, plot average ttp
-            plot(d,linePoint,':','LineWidth',0.2,'MarkerFaceColor',[0.8500 0.3250 0.0980]); %orange 
-            set(handles.ttpointData,'String',[num2str(round(PWVpoint,2)) ' m/s']); %write out PWV value in text field
-        end 
-        if get(handles.ttfRadio,'Value')
-            plot(d,lineFoot,':','LineWidth',0.2,'MarkerFaceColor',[0.4940 0.1840 0.5560]); %purple
-            set(handles.ttfData,'String',[num2str(round(PWVfoot,2)) ' m/s']);
-        end 
-        if get(handles.ttuRadio,'Value')
-            plot(d,lineUpstroke,':','LineWidth',0.2,'MarkerFaceColor',[0.4660 0.6740 0.1880]); %green
-            set(handles.ttuData,'String',[num2str(round(PWVupstroke,2)) ' m/s']);
-        end 
-        if get(handles.xcorrRadio,'Value')
-            plot(d,lineXcorr,':','LineWidth',0.2,'MarkerFaceColor',[0.6350 0.0780 0.1840]); %red
-            set(handles.xcorrData,'String',[num2str(round(PWVxcorr,2)) ' m/s']);
-        end 
-        plot(d,lineAverage,'-k','LineWidth',0.2);
-        legend(legendSet,'Location','northwest');
-        hold off;
-    
-    else %else we just have two ROIs, one PWV measure (eg AscAo --> DescAo)
-        PWVpoint = distance/TTPoint; %PWV = dx/dt (no linear regression)
-        PWVfoot = distance/TTFoot;
-        PWVupstroke = distance/TTUpstroke;
-        PWVxcorr = distance/Xcorr;
-        PWVaverage = distance/average;
-        
-        if get(handles.ttpointRadio,'Value') %if our ttpoint button is on, plot single point
-            set(handles.ttpointData,'String',[num2str(round(PWVpoint,2)) ' m/s']); %write out PWV value in text field
-        end 
-        if get(handles.ttfRadio,'Value')
-            set(handles.ttfData,'String',[num2str(round(PWVfoot,2)) ' m/s']);
-        end 
-        if get(handles.ttuRadio,'Value')
-            set(handles.ttuData,'String',[num2str(round(PWVupstroke,2)) ' m/s']);
-        end 
-        if get(handles.xcorrRadio,'Value')
-            set(handles.xcorrData,'String',[num2str(round(PWVxcorr,2)) ' m/s']);
-        end 
-        legend(legendSet,'Location','northwest');
+    % Here, we perform linear regression to find best fit line for each
+    % time-to (TT) method. Note: lineFit(1)=slope; lineFit(2)=intercept
+
+    %TTPoint Method
+    PointFit = polyfit(distance,TTPoint,1); %fit line to TTPoint points
+    linePoint = PointFit(1)*d + PointFit(2); %calculate line
+
+    %TTFoot Method
+    FootFit = polyfit(distance,TTFoot,1);
+    lineFoot = FootFit(1)*d + FootFit(2);
+
+    %TTUpstroke Method
+    UpstrokeFit = polyfit(distance,TTUpstroke,1);
+    lineUpstroke = UpstrokeFit(1)*d + UpstrokeFit(2);
+
+    %Xcorr Method
+    XcorrFit = polyfit(distance,Xcorr,1);
+    lineXcorr = XcorrFit(1)*d + XcorrFit(2);
+
+    %Average TT
+    AverageFit = polyfit(distance,average,1);
+    lineAverage= AverageFit(1)*d + AverageFit(2);
+
+    PWVpoint = 1/PointFit(1); %PWV = 1/slope (mm/ms = m/s)
+    PWVfoot = 1/FootFit(1);
+    PWVupstroke = 1/UpstrokeFit(1);
+    PWVxcorr = 1/XcorrFit(1);
+    PWVaverage = 1/AverageFit(1);
+
+    hold on; 
+    if get(handles.ttpointRadio,'Value') %if our ttpoint button is on, plot average ttp
+        plot(d,linePoint,':','LineWidth',0.2,'MarkerFaceColor',[0.8500 0.3250 0.0980]); %orange 
+        set(handles.ttpointData,'String',[num2str(round(PWVpoint,2)) ' m/s']); %write out PWV value in text field
     end 
+    if get(handles.ttfRadio,'Value')
+        plot(d,lineFoot,':','LineWidth',0.2,'MarkerFaceColor',[0.4940 0.1840 0.5560]); %purple
+        set(handles.ttfData,'String',[num2str(round(PWVfoot,2)) ' m/s']);
+    end 
+    if get(handles.ttuRadio,'Value')
+        plot(d,lineUpstroke,':','LineWidth',0.2,'MarkerFaceColor',[0.4660 0.6740 0.1880]); %green
+        set(handles.ttuData,'String',[num2str(round(PWVupstroke,2)) ' m/s']);
+    end 
+    if get(handles.xcorrRadio,'Value')
+        plot(d,lineXcorr,':','LineWidth',0.2,'MarkerFaceColor',[0.6350 0.0780 0.1840]); %red
+        set(handles.xcorrData,'String',[num2str(round(PWVxcorr,2)) ' m/s']);
+    end 
+    plot(d,lineAverage,'-k','LineWidth',0.2);
+    legend(legendSet,'Location','northwest');
+    hold off; 
     
     if numMethods>0 %if we have at least one ttbutton on
         set(handles.averageData,'String',[num2str(round(PWVaverage,2)) ' m/s']); %set PWV text field
@@ -672,7 +649,6 @@ function completeLoadingROI_Callback(hObject, eventdata, handles)
     
     
 
- 
 %%%%%%%%%%%% PWV PLOT %%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% 
 % --- PWV PLOT - CREATE FUNCTION
@@ -687,39 +663,35 @@ function exportAnalysisButton_Callback(hObject, eventdata, handles)
         flow = computeTTs(handles.flow,handles.global); %recalculate flow struct for each interp
         numROIs = numel(flow);
         
-        Distances = [handles.centerline.PlaneDistances sum(handles.centerline.PlaneDistances)];
-        TTPoint = [flow.TTPoint sum([flow.TTPoint])]; 
-        TTFoot = [flow.TTFoot sum([flow.TTFoot])]; 
-        TTUpstroke = [flow.TTUpstroke sum([flow.TTUpstroke])]; 
-        Xcorr = [flow.Xcorr sum([flow.Xcorr])];
-        TTaverage = mean([TTFoot; TTPoint; TTUpstroke; Xcorr],1); %get average time shift
+        distance = [0 cumsum(handles.centerline.PlaneDistances)];
+        ttpoint = [handles.flow.TTPoint]; 
+        ttfoot = [handles.flow.TTFoot];
+        ttupstroke = [handles.flow.TTUpstroke]; 
+        xcorr = [handles.flow.Xcorr];
+        ttaverage = mean([ttfoot; ttpoint; ttupstroke; xcorr],1); %get average time shift
+        
+        Distances = abs(diff([distance 0])); %add zero at end to get full distance
+        TTPoint = [diff(ttpoint) sum(diff(ttpoint))];
+        TTFoot = [diff(ttfoot) sum(diff(ttfoot))];
+        TTUpstroke = [diff(ttupstroke) sum(diff(ttupstroke))];
+        Xcorr = [diff(xcorr) sum(diff(xcorr))];
+        TTaverage = [diff(ttaverage) sum(diff(ttaverage))];
         
         % Make first column for excel file
-        numCompares = numel(Distances); %get number of PWV measurements
-        if numCompares==1 %if 2 ROIs, one measurement
-            PLANES{1} = [flow(1).Name ' --> ' flow(2).Name]; %get names for Excel
-        elseif numCompares==3
-            PLANES{1} = [flow(1).Name ' --> ' flow(2).Name];
-            PLANES{2} = [flow(1).Name ' --> ' flow(3).Name];
-            PLANES{3} = [flow(2).Name ' --> ' flow(3).Name];   
-        else
-            PLANES{1} = [flow(1).Name ' --> ' flow(2).Name];
-            PLANES{2} = [flow(1).Name ' --> ' flow(3).Name];
-            PLANES{3} = [flow(1).Name ' --> ' flow(4).Name];
-            PLANES{4} = [flow(2).Name ' --> ' flow(3).Name]; 
-            PLANES{5} = [flow(2).Name ' --> ' flow(4).Name]; 
-            PLANES{6} = [flow(3).Name ' --> ' flow(4).Name];        
+        numCompares = length(Distances); %get number of PWV measurements
+        for d=1:(numCompares-1)
+            PLANES{d} = [flow(d).Name ' --> ' flow(d+1).Name]; %get names for Excel
         end 
-        
+        PLANES{numCompares} = [flow(1).Name ' --> ' flow(end).Name]; %get names for Excel
         PLANES{numCompares+1} = 'FIT_PWV'; %These rows be for PWV fit parameters
         PLANES{numCompares+2} = 'm (slope)';
         PLANES{numCompares+3} = 'b (y-intercept)';
+        PLANES{numCompares+4} = 'R^2';
 
-        
-        PWV_Point = NaN(numCompares+3,1); %add dummy rows to match PLANES size
-        PWV_Foot = NaN(numCompares+3,1);
-        PWV_Upstroke = NaN(numCompares+3,1);
-        PWV_Xcorr = NaN(numCompares+3,1);
+        PWV_Point = NaN(numCompares+4,1); %add dummy rows to match PLANES size
+        PWV_Foot = NaN(numCompares+4,1);
+        PWV_Upstroke = NaN(numCompares+4,1);
+        PWV_Xcorr = NaN(numCompares+4,1);
         PWV_Average = zeros(1,numCompares);
         
         for i=1:numCompares
@@ -730,67 +702,45 @@ function exportAnalysisButton_Callback(hObject, eventdata, handles)
             PWV_Average(i) = (PWV_Point(i)+PWV_Foot(i)+PWV_Upstroke(i)+PWV_Xcorr(i))/4; %get simple average of all PWVs
         end 
         
-        
-        if numel(Distances)>2  %if we have at least 3 ROIs (more than one data point), we can use linear regression               
-            [linePointFit,~] = polyfit(Distances,TTPoint,1); %get linear regression fit for all points 
-            PWV_Point(numCompares+1) = 1/linePointFit(1); %calculate PWV (=1/slope)
-            PWV_Point(numCompares+2) = linePointFit(1); %get slope
-            PWV_Point(numCompares+3) = linePointFit(2); %get y-intercept
-            
-            [lineFootFit,~] = polyfit(Distances,TTFoot,1);
-            PWV_Foot(numCompares+1) = 1/lineFootFit(1);
-            PWV_Foot(numCompares+2) = lineFootFit(1);
-            PWV_Foot(numCompares+3) = lineFootFit(2);
-            
-            [lineUpstrokeFit,~] = polyfit(Distances,TTUpstroke,1);
-            PWV_Upstroke(numCompares+1) = 1/lineUpstrokeFit(1);
-            PWV_Upstroke(numCompares+2) = lineUpstrokeFit(1);
-            PWV_Upstroke(numCompares+3) = lineUpstrokeFit(2);
-            
-            [lineXcorrFit,~] = polyfit(Distances,Xcorr,1);
-            PWV_Xcorr(numCompares+1) = 1/lineXcorrFit(1);
-            PWV_Xcorr(numCompares+2) = lineXcorrFit(1);
-            PWV_Xcorr(numCompares+3) = lineXcorrFit(2);
-            
-            [lineAverageFit,~] = polyfit(Distances,TTaverage,1);
-            PWV_Average(numCompares+1) = 1/lineAverageFit(1);
-            PWV_Average(numCompares+2) = lineAverageFit(1);
-            PWV_Average(numCompares+3) = lineAverageFit(2);
-            PWV_Average = PWV_Average';
-        else %if we have only 2 ROIs (one data point), we can't do linear regression
-            PWV_Point(numCompares+1) = Distances/TTPoint; %do a simple division (should be same as PWV_Point(1))
-            PWV_Point(numCompares+2) = NaN;
-            PWV_Point(numCompares+3) = NaN;
-            
-            PWV_Foot(numCompares+1) = Distances/TTFoot;
-            PWV_Foot(numCompares+2) = NaN;
-            PWV_Foot(numCompares+3) = NaN;
+        [linePointFit,S] = polyfit(distance,ttpoint,1); %get linear regression fit for all points 
+        PWV_Point(numCompares+1) = 1/linePointFit(1); %calculate PWV (=1/slope)
+        PWV_Point(numCompares+2) = linePointFit(1); %get slope
+        PWV_Point(numCompares+3) = linePointFit(2); %get y-intercept
+        PWV_Point(numCompares+4) = (1 - (S.normr/norm(ttpoint - mean(ttpoint)))^2); %R^2
 
-            PWV_Upstroke(numCompares+1) = Distances/TTUpstroke;
-            PWV_Upstroke(numCompares+2) = NaN;
-            PWV_Upstroke(numCompares+3) = NaN;
+        [lineFootFit,S] = polyfit(distance,ttfoot,1);
+        PWV_Foot(numCompares+1) = 1/lineFootFit(1);
+        PWV_Foot(numCompares+2) = lineFootFit(1);
+        PWV_Foot(numCompares+3) = lineFootFit(2);
+        PWV_Foot(numCompares+4) = (1 - (S.normr/norm(ttfoot - mean(ttfoot)))^2);
 
-            PWV_Xcorr(numCompares+1) = Distances/Xcorr;
-            PWV_Xcorr(numCompares+2) = NaN;
-            PWV_Xcorr(numCompares+3) = NaN;
-            
-            PWV_Average(numCompares+1) = Distances/TTaverage;
-            PWV_Average(numCompares+2) = NaN;
-            PWV_Average(numCompares+3) = NaN;
-            PWV_Average = PWV_Average'; %flip to match other PWV arrays
-        end 
+        [lineUpstrokeFit,~] = polyfit(distance,ttupstroke,1);
+        PWV_Upstroke(numCompares+1) = 1/lineUpstrokeFit(1);
+        PWV_Upstroke(numCompares+2) = lineUpstrokeFit(1);
+        PWV_Upstroke(numCompares+3) = lineUpstrokeFit(2);
+        PWV_Upstroke(numCompares+4) = (1 - (S.normr/norm(ttupstroke - mean(ttupstroke)))^2);
+
+        [lineXcorrFit,~] = polyfit(distance,xcorr,1);
+        PWV_Xcorr(numCompares+1) = 1/lineXcorrFit(1);
+        PWV_Xcorr(numCompares+2) = lineXcorrFit(1);
+        PWV_Xcorr(numCompares+3) = lineXcorrFit(2);
+        PWV_Xcorr(numCompares+4) = (1 - (S.normr/norm(xcorr - mean(xcorr)))^2);
+
+        [lineAverageFit,~] = polyfit(distance,ttaverage,1);
+        PWV_Average(numCompares+1) = 1/lineAverageFit(1);
+        PWV_Average(numCompares+2) = lineAverageFit(1);
+        PWV_Average(numCompares+3) = lineAverageFit(2);
+        PWV_Average(numCompares+4) = (1 - (S.normr/norm(ttaverage - mean(ttaverage)))^2);
+        PWV_Average = PWV_Average';
         
-        for n = 1:3 %add dummy rows here, couldn't do it above to calculate PWV fits
-            Distances(numCompares+n) = NaN;
-            TTPoint(numCompares+n) = NaN;
-            TTFoot(numCompares+n) = NaN;
-            TTUpstroke(numCompares+n) = NaN;
-            Xcorr(numCompares+n) = NaN;
-            TTaverage(numCompares+n) = NaN;
-        end 
+        Distances(numCompares+1:numCompares+4) = NaN;
+        TTPoint(numCompares+1:numCompares+4) = NaN;
+        TTFoot(numCompares+1:numCompares+4) = NaN;
+        TTUpstroke(numCompares+1:numCompares+4) = NaN;
+        Xcorr(numCompares+1:numCompares+4) = NaN;
+        TTaverage(numCompares+1:numCompares+4) = NaN;
         
-        % Invert so data is running down (each array will be a column)f
-        PLANES = PLANES';
+        PLANES = PLANES'; %Needed for excel, won't save name if ' in table call
         Distances = Distances';
         TTPoint = TTPoint';
         TTFoot = TTFoot';
@@ -988,51 +938,38 @@ function flow = computeTTs(flow,globals)
     end      
     
     % TTPoint - time to point calculation
-    allROIs = 1:numROIs;
-    for i=2:numROIs
-        dt1 = curvePoints(i-1).times(curvePoints(i-1).FiftyPointIdx); %get time difference b/w 50%'s (ms) 
-        dt2 = curvePoints(i).times(curvePoints(i).FiftyPointIdx); %get time difference b/w 50%'s (ms) 
-        flow(i-1).TTPoint = dt2-dt1; %add to flow struct
+    for i=1:numROIs
+        tp = times(curvePoints(i).FiftyPointIdx); %get time at 50% peak (ms) 
+        flow(i).TTPoint = tp; %add to flow struct
     end    
     
-    % % TTUpstroke - time to upstroke calculation
-    for i=2:numROIs
-        [sigmoid1,dt1] = sigFit(flows(i-1,:),curvePoints(i-1).times); %see sigFit function below
-        [sigmoid2,dt2] = sigFit(flows(i,:),curvePoints(i).times);
-        flow(i-1).TTUpstroke = dt2-dt1; %add to flow struct
+    % TTUpstroke - time to upstroke calculation
+    for i=1:numROIs
+        [sigmoid,tp] = sigFit(flows(i,:),times); %see sigFit function below
+        flow(i).TTUpstroke = tp; %add to flow struct
     end  
   
     % TTFoot - time to foot calculation
-    for i=2:numROIs
-        leftIdx1 = curvePoints(i-1).TwentyPointIdx;
-        rightIdx1 = curvePoints(i-1).EightyPointIdx;
-        flowSeg1 = flows(i-1,leftIdx1:rightIdx1);
-        timeSeg1 = curvePoints(i-1).times(leftIdx1:rightIdx1);
-        p1 = polyfit(timeSeg1,flowSeg1,1);
-        dt1 = -(p1(2)/p1(1));
-        leftIdx2 = curvePoints(i).TwentyPointIdx;
-        rightIdx2 = curvePoints(i).EightyPointIdx;
-        flowSeg2 = flows(i,leftIdx2:rightIdx2);
-        timeSeg2 = curvePoints(i).times(leftIdx2:rightIdx2);
-        p2 = polyfit(timeSeg2,flowSeg2,1);
-        dt2 = -(p2(2)/p2(1));
-        flow(i-1).TTFoot = dt2-dt1; %add to flow struct
+    for i=1:numROIs
+        leftIdx = curvePoints(i).TwentyPointIdx;
+        rightIdx = curvePoints(i).EightyPointIdx;
+        flowSeg = flows(i,leftIdx:rightIdx);
+        timeSeg = times(leftIdx:rightIdx);
+        p1 = polyfit(timeSeg,flowSeg,1);
+        tp = -(p1(2)/p1(1));
+        flow(i).TTFoot = tp; %add to flow struct
     end  
   
     % XCorr - cross correlation calculation
+    %since we need 2 curves to get shift, make 1st point = to 1st TTF
+    flow(1).Xcorr = flow(1).TTFoot;
     for i=2:numROIs
-        minTimeres = min([curvePoints(i-1).timeres curvePoints(i).timeres]);
-        t1 = 0:minTimeres:curvePoints(i-1).times(end);
-        t2 = 0:minTimeres:curvePoints(i).times(end);
-        flow1 = interp1(curvePoints(i-1).times,flows(i-1,:),t1);
-        flow2 = interp1(curvePoints(i).times,flows(i,:),t1);
-        minLength = min([length(t2) length(t1)]);
-        flow1 = flow1(1:minLength);
-        flow2 = flow2(1:minLength);
+        flow1 = flows(i-1,:);
+        flow2 = flows(i,:);
         [Xcorrs,lags] = xcorr(flow2,flow1,'normalized'); %perform cross correlation between flow curves
         [~,maxXcorrIdx] = max(Xcorrs); %get index of max Xcorr value
         shift = lags(maxXcorrIdx); %find time lag of Xcorr peak
-        flow(i-1).Xcorr = minTimeres.*(shift); %get time shift
+        flow(i).Xcorr = flow(i-1).Xcorr + timeres*shift; %cumulative sum from last time
     end  
     
     
