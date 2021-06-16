@@ -642,7 +642,7 @@ function TimeVsDistance_CreateFcn(hObject, eventdata, handles)
 
 % --- EXPORT ANALYSIS - CALLBACK
 function exportAnalysisButton_Callback(hObject, eventdata, handles)
-    interpTypes = {'None','Gaussian'};
+    interpTypes = {'Gaussian','None'};
     for t=1:length(interpTypes) %export data for each interp type
         handles.global.interpType = interpTypes{t}; %switch interp type
         flow = computeTTs(handles.flow,handles.global); %recalculate flow struct for each interp

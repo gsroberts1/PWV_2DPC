@@ -635,11 +635,11 @@ directory = uigetdir(); %saving location
 save([directory filesep 'CenterlineData' filesep 'anatCLdataset.mat'],'anatCLdataset');
 
 frame = getframe(handles.CenterlineDisplay);
-imwrite(frame2im(frame),[directory filesep 'CenterlineData' filesep 'Centerline3D.png']);
+imwrite(frame2im(frame),[directory filesep 'Centerline3D.png']);
 frame = getframe(handles.TraceCoronal);
-imwrite(frame2im(frame),[directory filesep 'CenterlineData' filesep 'CoronalTrace.png']);
+imwrite(frame2im(frame),[directory filesep 'CoronalTrace.png']);
 frame = getframe(handles.TraceSagittal);
-imwrite(frame2im(frame),[directory filesep 'CenterlineData' filesep 'SagittalTrace.png']);
+imwrite(frame2im(frame),[directory filesep 'SagittalTrace.png']);
 
 set(handles.SaveText,'String','Centerline Saved!'); 
 
