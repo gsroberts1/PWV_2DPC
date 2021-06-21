@@ -743,14 +743,18 @@ function exportAnalysisButton_Callback(hObject, eventdata, handles)
             cd([baseDir filesep 'DataAnalysis']); %go to it
             writetable(pwvTable,['Summary_' chopDate '.xlsx'],'FileType','spreadsheet','Sheet',['Interpolation - ' interpTypes{t}]); %write excel sheet for each interp
             flow = handles.flow; %make variables for saving
-            saveTTplots(handles,flow);
+            if strcmp(handles.global.interpType,'Gaussian')
+                saveTTplots(handles,flow);
+            end 
             save('flow.mat','flow')
             save('pwvTable.mat','pwvTable')
         else %or if the directory already exists
             cd([baseDir filesep 'DataAnalysis']); %go to it
             writetable(pwvTable,['Summary_' chopDate '.xlsx'],'FileType','spreadsheet','Sheet',['Interpolation - ' interpTypes{t}]);
             flow = handles.flow;
-            saveTTplots(handles,flow);
+            if strcmp(handles.global.interpType,'Gaussian')
+                saveTTplots(handles,flow);
+            end 
             save('flow.mat','flow')
             save('pwvTable.mat','pwvTable')
         end 

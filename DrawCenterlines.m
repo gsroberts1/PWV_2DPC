@@ -632,7 +632,7 @@ anatCLdataset.Distances = distances;
 anatCLdataset.ROIindices = IDX;
 anatCLdataset.PlaneDistances = PlaneDistances;
 directory = uigetdir(); %saving location
-save([directory filesep 'CenterlineData' filesep 'anatCLdataset.mat'],'anatCLdataset');
+save([directory filesep 'anatCLdataset.mat'],'anatCLdataset');
 
 frame = getframe(handles.CenterlineDisplay);
 imwrite(frame2im(frame),[directory filesep 'CenterlineData' filesep 'Centerline3D.png']);
