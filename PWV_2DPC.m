@@ -768,6 +768,9 @@ function exportAnalysisButton_Callback(hObject, eventdata, handles)
     pcDatasets = handles.pcDatasets;
     save('pcDatasets.mat','pcDatasets');
     cd(handles.global.homeDir); %go back home  
+    mkdir('PWV_2DPC_Analysis');
+    movefile('DataAnalysis','PWV_2DPC_Analysis');
+    movefile('ROIimages','PWV_2DPC_Analysis');
     set(handles.exportDone,'String','Export Completed!');
 
     guidata(hObject, handles);
@@ -1108,6 +1111,8 @@ function flow = organizeFlowInfo(handles)
         end 
     end 
 
+    
+    
  function saveTTplots(handles,flow)   
     times = handles.pcDatasets(1).ROIdataUninterp(1).times;
     figure('units','normalized','outerposition',[0 0 1 1]); 
