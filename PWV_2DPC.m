@@ -64,6 +64,7 @@ function PWV_2DPC_OpeningFcn(hObject, eventdata, handles, varargin)
     handles.pcDatasets(1).ROIdataUninterp = []; %throgh-plane flow curve data
     handles.pcDatasets(1).ROIdataGaussian = []; %flow smoothed with Gauss.
     
+    handles.global.dataType = 'Cartesian';
     handles.global.interpType = 'Gaussian'; %interpolation type (i.e. Gaussian)
     handles.global.startAnalyzing = 0; %flag to begin PWV calculations
     handles.global.totalROIs = 0;
@@ -129,6 +130,7 @@ function load2DPCbutton_Callback(hObject, eventdata, handles)
     [~,~,extension] = fileparts(pcFile);
     dirInfo = dir(fullfile(pcDir,['*' extension]));
     if isequal(extension,'.dcm') %if our extension is a dicom file
+        handles.global.dataType = 'Cartesian';
         handles.pcDatasets(pcIter).Info = dicominfo(fullfile(pcDir,dirInfo(1).name)); %get dicom metadata (from 1st dicom)
         for i=1:length(dirInfo)
             hold(:,:,i) = single(dicomread(fullfile(pcDir,dirInfo(i).name))); %read dicoms and cast to single
@@ -156,6 +158,11 @@ function load2DPCbutton_Callback(hObject, eventdata, handles)
         resx = pcviprHeader.matrixx; %resolution in x
         resy = pcviprHeader.matrixy; %resolution in y
         nframes = pcviprHeader.frames; %number of cardiac frames
+        if nframes<80
+            handles.global.dataType = 'Radial';
+        elseif nframes>=80
+            handles.global.dataType = 'Radial_LLR';
+        end 
         MAG = load_dat(fullfile(pcDir,'MAG.dat'),[resx resy]); %Average magnitude
         CD = load_dat(fullfile(pcDir,'CD.dat'),[resx resy]); %Average complex difference
         VMEAN = load_dat(fullfile(pcDir,'comp_vd_3.dat'),[resx resy]); %Average velocity
@@ -178,6 +185,7 @@ function load2DPCbutton_Callback(hObject, eventdata, handles)
         handles.pcDatasets(pcIter).Images.v = flipud(v); 
         handles.pcDatasets(pcIter).Names = ['Plane' num2str(pcIter)];
     else %if a single matlab file (with all images)
+        handles.global.isRadial = 1;
         hold = load([pcDir pcFile]);
         planeName = fieldnames(hold);
         planeName = planeName{1};
@@ -370,14 +378,14 @@ function loadROIbutton_Callback(hObject, eventdata, handles)
     if dataDir(end)=='\' || dataDir(end)=='/' %kill the slash if it exists
         dataDir(end) = [];
     end 
-    if ~exist([dataDir filesep 'ROIimages'],'dir') %if the proposed directory doesn't exist
-        mkdir([dataDir filesep 'ROIimages']); %make it
-        cd([dataDir filesep 'ROIimages']); %move into it
+    if ~exist([dataDir filesep 'ROIimages_' handles.global.dataType],'dir') %if the proposed directory doesn't exist
+        mkdir([dataDir filesep 'ROIimages_' handles.global.dataType]); %make it
+        cd([dataDir filesep 'ROIimages_' handles.global.dataType]); %move into it
         frame = getframe(handles.pcPlanePlot); %get a snapshot of the PC plane plot with ROI
         image = frame2im(frame); %make into image
         imwrite(image,[handles.pcDatasets(planeNum).Names '.png']) %write it out as PNG
     else
-        cd([dataDir filesep 'ROIimages']); %if ROIimages already exists, move into it
+        cd([dataDir filesep 'ROIimages_' handles.global.dataType]); %if ROIimages already exists, move into it
         frame = getframe(handles.pcPlanePlot);
         image = frame2im(frame);
         imwrite(image,[handles.pcDatasets(planeNum).Names '.png'])
@@ -738,39 +746,36 @@ function exportAnalysisButton_Callback(hObject, eventdata, handles)
         baseDir = handles.global.homeDir; %rejoin string to get name of folder one up from plane data
         date = datestr(now); %get current date/time
         chopDate = [date(1:2) '-' date(4:6) '-' date(10:11) '-' date(13:14) date(16:17)]; %chop date up
-        if ~exist([baseDir filesep 'DataAnalysis'],'dir') %if directory doesn't exist
-            mkdir([baseDir filesep 'DataAnalysis']); %make it
-            cd([baseDir filesep 'DataAnalysis']); %go to it
-            writetable(pwvTable,['Summary_' chopDate '.xlsx'],'FileType','spreadsheet','Sheet',['Interpolation - ' interpTypes{t}]); %write excel sheet for each interp
-            flow = handles.flow; %make variables for saving
-            if strcmp(handles.global.interpType,'Gaussian')
-                saveTTplots(handles,flow);
-            end 
-            save('flow.mat','flow')
-            save('pwvTable.mat','pwvTable')
+        dataDir = ['DataAnalysis_' handles.global.dataType];
+
+        if ~exist([baseDir filesep dataDir],'dir') %if directory doesn't exist
+            mkdir([baseDir filesep dataDir]); %make it
         else %or if the directory already exists
-            cd([baseDir filesep 'DataAnalysis']); %go to it
-            writetable(pwvTable,['Summary_' chopDate '.xlsx'],'FileType','spreadsheet','Sheet',['Interpolation - ' interpTypes{t}]);
-            flow = handles.flow;
+            cd([baseDir filesep dataDir]); %go to it
+            writetable(pwvTable,['Summary_' chopDate '.xlsx'],'FileType','spreadsheet','Sheet',['Interpolation - ' interpTypes{t}]); %write excel sheet for each interp
             if strcmp(handles.global.interpType,'Gaussian')
                 saveTTplots(handles,flow);
             end 
-            save('flow.mat','flow')
-            save('pwvTable.mat','pwvTable')
+            if ~exist('flow.mat','file')
+                save('flow.mat','flow')
+                save('pwvTable.mat','pwvTable')
+            end 
         end 
         cd(handles.global.homeDir); %go back home  
         clear PLANES %need to do this because PLANES will keep getting transposed
     end 
     
-    cd([baseDir filesep 'DataAnalysis']); %go to it
+    cd([baseDir filesep dataDir]); %go to it
     frame = getframe(handles.TimeVsDistance); %get snapshot of PWV plot 
     imwrite(frame2im(frame),'PWVanalysisPlot.png'); %write out to PNG
     pcDatasets = handles.pcDatasets;
     save('pcDatasets.mat','pcDatasets');
     cd(handles.global.homeDir); %go back home  
-    mkdir('PWV_2DPC_Analysis');
-    movefile('DataAnalysis','PWV_2DPC_Analysis');
-    movefile('ROIimages','PWV_2DPC_Analysis');
+    if ~exist('PWV_2DPC_Analysis','dir')
+        mkdir('PWV_2DPC_Analysis');
+    end 
+    movefile(dataDir,'PWV_2DPC_Analysis');
+    movefile(['ROIimages_' data.global.dataType],'PWV_2DPC_Analysis');
     set(handles.exportDone,'String','Export Completed!');
 
     guidata(hObject, handles);
