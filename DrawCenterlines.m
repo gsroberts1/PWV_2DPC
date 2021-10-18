@@ -85,7 +85,7 @@ set(handles.WhiteBoxReminder,'Visible','off');
    '*.*',  'All Files (*.*)'}, 'Select "anatCLdataset.mat" file');
 load([clDir clFile]);
 handles.axial = anatCLdataset.Axial;
-handles.coronal = anatCLdataset.Coronal;
+%handles.coronal = anatCLdataset.Coronal;
 handles.sagittal = anatCLdataset.Sagittal;
 handles.cartesian = anatCLdataset.Cartesian2DPC;
 handles.Centerline = anatCLdataset.Centerline;
@@ -104,13 +104,13 @@ xlabel('X (mm)');
 ylabel('Y (mm)');
 zlabel('Z (mm)');
 
-POINTS = handles.coronal.POINTS;
-h = scatter3(POINTS(1,:),POINTS(2,:),POINTS(3,:), 32, ...
-    'MarkerEdgeColor','k',...
-    'MarkerFaceColor',[.75 .75 0], ...
-    'DisplayName','Coronal');
-alpha = 0.3;
-set(h,'MarkerEdgeAlpha',alpha,'MarkerFaceAlpha',alpha);
+% POINTS = handles.coronal.POINTS;
+% h = scatter3(POINTS(1,:),POINTS(2,:),POINTS(3,:), 32, ...
+%     'MarkerEdgeColor','k',...
+%     'MarkerFaceColor',[.75 .75 0], ...
+%     'DisplayName','Coronal');
+% alpha = 0.3;
+% set(h,'MarkerEdgeAlpha',alpha,'MarkerFaceAlpha',alpha);
 
 POINTS = handles.sagittal.POINTS;
 h = scatter3(POINTS(1,:),POINTS(2,:),POINTS(3,:), 32, ...
@@ -259,101 +259,101 @@ guidata(hObject, handles);
 
 
 
-% --- Executes on button press in LoadCoronalPush.
-function LoadCoronalPush_Callback(hObject, eventdata, handles)
-handles.CurrView = 'Coronal';
-[anatomicalFile, anatomicalDir] = uigetfile({'*.dcm;*.dicom;','Useable Files (*.dcm,*.dicom)';
-   '*.dcm',  'DICOM files (*.dcm)'; ...
-   '*.dicom','DICOM-files (*.dicom)'; ...
-   '*.*',  'All Files (*.*)'}, 'Select ONE Coronal DICOM image');
-[~,~,extension] = fileparts(anatomicalFile); %get file extension
-dirInfo = dir(fullfile(anatomicalDir,['*' extension]));
-handles.coronal.Info = dicominfo(fullfile(anatomicalDir,dirInfo(1).name));
-for i=1:length(dirInfo) %read all dcm files
-    images(:,:,i) = single(dicomread(fullfile(anatomicalDir,dirInfo(i).name)));
-end  
-handles.coronal.Images = rescale(images);
-originShift = [handles.coronal.Info.ImagePositionPatient;1]; % origin is top left corner of image
-xres = handles.coronal.Info.PixelSpacing(1);
-yres = handles.coronal.Info.PixelSpacing(2);
-zres = handles.coronal.Info.SliceThickness;
-
-% sometimes get extremely small values that should be 0, so round
-xVector = round(handles.coronal.Info.ImageOrientationPatient(1:3),8); % what direction rows run w/r/to x
-yVector = round(handles.coronal.Info.ImageOrientationPatient(4:6),8); % what direction the cols run w/r/to y
-zVector = [cross(xVector,yVector);0];
-
-xVector = [xVector;0];
-yVector = [yVector;0];
-handles.coronal.RotationMatrix = ...
-    [xres*xVector yres*yVector -zres*zVector originShift]; % turn these vectors into matrices
-
-set(handles.ImageSlider,'Enable','on'); 
-set(handles.MinContrastUpdate,'Enable','on'); 
-set(handles.MaxContrastUpdate,'Enable','on'); 
-set(handles.UpdateCoronal,'String','Coronal Data Loaded'); 
-updateAnatImages(handles)
-
-guidata(hObject, handles);
-
-
-
-% --- Executes on button press in SegCoronalPush.
-function SegCoronalPush_Callback(hObject, eventdata, handles)
-set(handles.ImageSlider,'Enable','off'); 
-set(handles.MinContrastUpdate,'Enable','off'); 
-set(handles.MaxContrastUpdate,'Enable','off'); 
-set(handles.WhiteBoxReminder,'Visible','on');
-axes(handles.AnatDisplay); %force axes to anatomical plot
-
-rot = handles.coronal.RotationMatrix;
-images = handles.coronal.Images;
-minc = str2double(get(handles.MinContrastUpdate,'String'));
-maxc = str2double(get(handles.MaxContrastUpdate,'String'));
-x = []; y = []; z = []; %allocate for coordinates of drawn points
-for i = 1:size(handles.coronal.Images,3) %go slice-by-slice through each image
-    im = images(:,:,i);
-    leftEndpoint = round(size(im,1).*0.9);
-    botEndpoint = round(size(im,2).*0.9);
-    largestEndpoint = max(leftEndpoint,botEndpoint);
-    im(leftEndpoint:end,botEndpoint:end) = 1;
-    imshow(im,[minc maxc]);
-    [xTemp,yTemp] = getpts(); %draw points on image along aorta
-    zTemp = i.*(ones(size(xTemp,1),1)); %add z-coordinates for slice
-    x = [x; xTemp]; %append points
-    y = [y; yTemp];
-    z = [z; zTemp];
-end 
-
-dummy = ones(size(x));
-within = x<largestEndpoint;
-x = x(within);
-y = y(within);
-z = z(within);
-dummy = dummy(within);
-points = [x, y, z, dummy]';
-
-for j=1:size(points,2)
-    POINTS(:,j) = rot*points(:,j);
-end 
-points(4,:) = [];
-POINTS(4,:) = [];
-handles.coronal.points = points;
-handles.coronal.POINTS = POINTS;
-axes(handles.CenterlineDisplay); hold on;
-h = scatter3(POINTS(1,:),POINTS(2,:),POINTS(3,:), 32, ...
-    'MarkerEdgeColor','k',...
-    'MarkerFaceColor',[.75 .75 0], ...
-    'DisplayName','Coronal');
-alpha = 0.3;
-set(h,'MarkerEdgeAlpha',alpha,'MarkerFaceAlpha',alpha);
-legend('Location','southeast');
-
-set(handles.ImageSlider,'Enable','on'); 
-set(handles.MinContrastUpdate,'Enable','on'); 
-set(handles.MaxContrastUpdate,'Enable','on'); 
-set(handles.WhiteBoxReminder,'Visible','off');
-guidata(hObject, handles);
+% % --- Executes on button press in LoadCoronalPush.
+% function LoadCoronalPush_Callback(hObject, eventdata, handles)
+% handles.CurrView = 'Coronal';
+% [anatomicalFile, anatomicalDir] = uigetfile({'*.dcm;*.dicom;','Useable Files (*.dcm,*.dicom)';
+%    '*.dcm',  'DICOM files (*.dcm)'; ...
+%    '*.dicom','DICOM-files (*.dicom)'; ...
+%    '*.*',  'All Files (*.*)'}, 'Select ONE Coronal DICOM image');
+% [~,~,extension] = fileparts(anatomicalFile); %get file extension
+% dirInfo = dir(fullfile(anatomicalDir,['*' extension]));
+% handles.coronal.Info = dicominfo(fullfile(anatomicalDir,dirInfo(1).name));
+% for i=1:length(dirInfo) %read all dcm files
+%     images(:,:,i) = single(dicomread(fullfile(anatomicalDir,dirInfo(i).name)));
+% end  
+% handles.coronal.Images = rescale(images);
+% originShift = [handles.coronal.Info.ImagePositionPatient;1]; % origin is top left corner of image
+% xres = handles.coronal.Info.PixelSpacing(1);
+% yres = handles.coronal.Info.PixelSpacing(2);
+% zres = handles.coronal.Info.SliceThickness;
+% 
+% % sometimes get extremely small values that should be 0, so round
+% xVector = round(handles.coronal.Info.ImageOrientationPatient(1:3),8); % what direction rows run w/r/to x
+% yVector = round(handles.coronal.Info.ImageOrientationPatient(4:6),8); % what direction the cols run w/r/to y
+% zVector = [cross(xVector,yVector);0];
+% 
+% xVector = [xVector;0];
+% yVector = [yVector;0];
+% handles.coronal.RotationMatrix = ...
+%     [xres*xVector yres*yVector -zres*zVector originShift]; % turn these vectors into matrices
+% 
+% set(handles.ImageSlider,'Enable','on'); 
+% set(handles.MinContrastUpdate,'Enable','on'); 
+% set(handles.MaxContrastUpdate,'Enable','on'); 
+% set(handles.UpdateCoronal,'String','Coronal Data Loaded'); 
+% updateAnatImages(handles)
+% 
+% guidata(hObject, handles);
+% 
+% 
+% 
+% % --- Executes on button press in SegCoronalPush.
+% function SegCoronalPush_Callback(hObject, eventdata, handles)
+% set(handles.ImageSlider,'Enable','off'); 
+% set(handles.MinContrastUpdate,'Enable','off'); 
+% set(handles.MaxContrastUpdate,'Enable','off'); 
+% set(handles.WhiteBoxReminder,'Visible','on');
+% axes(handles.AnatDisplay); %force axes to anatomical plot
+% 
+% rot = handles.coronal.RotationMatrix;
+% images = handles.coronal.Images;
+% minc = str2double(get(handles.MinContrastUpdate,'String'));
+% maxc = str2double(get(handles.MaxContrastUpdate,'String'));
+% x = []; y = []; z = []; %allocate for coordinates of drawn points
+% for i = 1:size(handles.coronal.Images,3) %go slice-by-slice through each image
+%     im = images(:,:,i);
+%     leftEndpoint = round(size(im,1).*0.9);
+%     botEndpoint = round(size(im,2).*0.9);
+%     largestEndpoint = max(leftEndpoint,botEndpoint);
+%     im(leftEndpoint:end,botEndpoint:end) = 1;
+%     imshow(im,[minc maxc]);
+%     [xTemp,yTemp] = getpts(); %draw points on image along aorta
+%     zTemp = i.*(ones(size(xTemp,1),1)); %add z-coordinates for slice
+%     x = [x; xTemp]; %append points
+%     y = [y; yTemp];
+%     z = [z; zTemp];
+% end 
+% 
+% dummy = ones(size(x));
+% within = x<largestEndpoint;
+% x = x(within);
+% y = y(within);
+% z = z(within);
+% dummy = dummy(within);
+% points = [x, y, z, dummy]';
+% 
+% for j=1:size(points,2)
+%     POINTS(:,j) = rot*points(:,j);
+% end 
+% points(4,:) = [];
+% POINTS(4,:) = [];
+% handles.coronal.points = points;
+% handles.coronal.POINTS = POINTS;
+% axes(handles.CenterlineDisplay); hold on;
+% h = scatter3(POINTS(1,:),POINTS(2,:),POINTS(3,:), 32, ...
+%     'MarkerEdgeColor','k',...
+%     'MarkerFaceColor',[.75 .75 0], ...
+%     'DisplayName','Coronal');
+% alpha = 0.3;
+% set(h,'MarkerEdgeAlpha',alpha,'MarkerFaceAlpha',alpha);
+% legend('Location','southeast');
+% 
+% set(handles.ImageSlider,'Enable','on'); 
+% set(handles.MinContrastUpdate,'Enable','on'); 
+% set(handles.MaxContrastUpdate,'Enable','on'); 
+% set(handles.WhiteBoxReminder,'Visible','off');
+% guidata(hObject, handles);
 
 
 
@@ -548,7 +548,8 @@ for p=1:length(handles.cartesian)
     PC = [PC handles.cartesian(p).POINTS];
 end 
 figure; 
-scatter(handles.coronal.POINTS(1,:),handles.coronal.POINTS(3,:),'b'); hold on;
+%scatter(handles.coronal.POINTS(1,:),handles.coronal.POINTS(3,:),'b'); hold on;
+%scatter(handles.sagittal.POINTS(1,:),handles.sagittal.POINTS(3,:),'b');
 scatter(handles.axial.POINTS(1,:),handles.axial.POINTS(3,:),'b'); hold on;
 scatter(PC(1,:),PC(3,:),'filled','g');
 title('Coronal Projection');
@@ -624,7 +625,7 @@ for i=1:(length(IDX)-1)
 end 
 
 anatCLdataset.Axial = handles.axial;
-anatCLdataset.Coronal = handles.coronal;
+%anatCLdataset.Coronal = handles.coronal;
 anatCLdataset.Sagittal = handles.sagittal;
 anatCLdataset.Cartesian2DPC = handles.cartesian;
 anatCLdataset.Centerline = centerline;
@@ -684,8 +685,8 @@ function updateAnatImages(handles)
     switch handles.CurrView
         case 'Axial'
             images = handles.axial.Images;
-        case 'Coronal'
-            images = handles.coronal.Images;
+        %case 'Coronal'
+            %images = handles.coronal.Images;
         case 'Sagittal'
             images = handles.sagittal.Images;
         case '2DCartesian'

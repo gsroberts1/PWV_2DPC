@@ -116,6 +116,7 @@ function loadCLpush_Callback(hObject, eventdata, handles)
     cd(clDir);
     handles.global.homeDir = clDir;
     set(handles.load2DPCbutton,'Enable','on');
+    set(handles.planeLoadedText,'String','Centerline Loaded');
     guidata(hObject, handles);
     
     
@@ -201,7 +202,7 @@ function load2DPCbutton_Callback(hObject, eventdata, handles)
         handles.pcDatasets(pcIter).Images.v = images(:,:,:,3);
         handles.pcDatasets(pcIter).Names = planeName;
     end
-    
+    set(handles.planeLoadedText,'String',['Plane #' num2str(handles.global.pcIter) ' Loaded']);
     handles.global.pcIter = handles.global.pcIter + 1;
     
     set(handles.pcPlanePopup,'Enable','on');
@@ -325,7 +326,7 @@ function loadROIbutton_Callback(hObject, eventdata, handles)
         roiDataRaw(:,i) = double(vTemp(roiMask)); %indexed velocities within mask
         meanROI(i) = mean(roiDataRaw(:,i)); %mean velocity in frame i (mm/s)
         stdvROI(i) = std(double(vTemp(roiMask))); %stdv of velocity in frame i (mm/s)
-        flowROI(i) = area.*meanROI(i).*0.001; %flow in frame i (mm^3/s = mL/s)
+        flowROI(i) = area.*meanROI(i).*0.001; %flow in frame i (mm^3/s*0.001 = mL/s)
     end 
 
     times = double(timeres.*(0:(frames-1))); %original times
