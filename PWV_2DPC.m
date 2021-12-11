@@ -162,9 +162,9 @@ function load2DPCbutton_Callback(hObject, eventdata, handles)
         resy = pcviprHeader.matrixy; %resolution in y
         nframes = pcviprHeader.frames; %number of cardiac frames
         if nframes<80
-            handles.global.dataType = 'Radial';
+            handles.global.dataType = 'Radial_LowRes';
         elseif nframes>=80
-            handles.global.dataType = 'Radial_LLR';
+            handles.global.dataType = 'Radial_HighRes';
         end 
         MAG = load_dat(fullfile(pcDir,'MAG.dat'),[resx resy]); %Average magnitude
         CD = load_dat(fullfile(pcDir,'CD.dat'),[resx resy]); %Average complex difference
