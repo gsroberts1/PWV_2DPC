@@ -7,6 +7,7 @@ if fid < 0  % If name does not exist in directory
 end
 
 % Reads in as short, reshapes by image res.
-v = reshape(fread(fid,'short=>single'),res);
+temp = fread(fid,'short=>single');
+v = reshape(temp,res(1),res(2));
 fclose(fid);
 end 

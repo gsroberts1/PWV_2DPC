@@ -547,26 +547,34 @@ PC = [];
 for p=1:length(handles.cartesian)
     PC = [PC handles.cartesian(p).POINTS];
 end 
-figure; 
+
 %scatter(handles.coronal.POINTS(1,:),handles.coronal.POINTS(3,:),'b'); hold on;
 %scatter(handles.sagittal.POINTS(1,:),handles.sagittal.POINTS(3,:),'b');
-scatter(handles.axial.POINTS(1,:),handles.axial.POINTS(3,:),'b'); hold on;
+corFig = figure; scatter(handles.axial.POINTS(1,:),handles.axial.POINTS(3,:),'b'); hold on;
 scatter(PC(1,:),PC(3,:),'filled','g');
 title('Coronal Projection');
 cor = drawpolyline;
 corP = cor.Position;
+splinePositions2 = interppolygon(corP,150); %interpolate coronal polyline (150 points)
+delete(cor);
+hold on; plot(splinePositions2(:,1),splinePositions2(:,2),'LineWidth',2.0);
 handles.TraceCoronal = gcf;
 
-figure; scatter(handles.sagittal.POINTS(2,:),handles.sagittal.POINTS(3,:),'b');
+sagFig = figure; scatter(handles.sagittal.POINTS(2,:),handles.sagittal.POINTS(3,:),'b');
 hold on; scatter(handles.axial.POINTS(2,:),handles.axial.POINTS(3,:),'b');
 hold on; scatter(PC(2,:),PC(3,:),'filled','g');
 title('Sagittal Projection');
 sag = drawpolyline;
 sagP = sag.Position;
+splinePositions1 = interppolygon(sagP,150); %interpolate sagittal polyline (150 points)
+delete(sag);
+hold on; plot(splinePositions1(:,1),splinePositions1(:,2),'LineWidth',2.0);
 handles.TraceSagittal = gcf;
 
-splinePositions1 = interppolygon(sagP,150); %interpolate sagittal polyline (150 points)
-splinePositions2 = interppolygon(corP,150); %interpolate coronal polyline (150 points)
+%splineLine(:,1) = splinePositions2(:,1);
+%splineLine(:,2) = splinePositions1(:,1);
+%splineLine(:,3) = splinePositions1(:,2);
+
 splineLine(:,1) = splinePositions1(:,1);
 splineLine(:,2) = splinePositions2(:,1);
 splineLine(:,3) = splinePositions1(:,2);
@@ -622,7 +630,7 @@ end
 
 for i=1:(length(IDX)-1)
     PlaneDistances(i) = sum( distances(IDX(i):(IDX(i+1)-1)) );
-end 
+end
 
 anatCLdataset.Axial = handles.axial;
 %anatCLdataset.Coronal = handles.coronal;

@@ -138,6 +138,8 @@ function load2DPCbutton_Callback(hObject, eventdata, handles)
         end  
         mag = hold(:,:,floor(length(dirInfo)/2)+1:end); %magnitude is last half
         v = hold(:,:,1:floor(length(dirInfo)/2)); %velocity is first half of images
+        mag = circshift(mag,10,3);
+        v = circshift(v,10,3);
         MAG = mean(mag,3); %time-averaged magnitude
         VMEAN = mean(v,3); %time-averaged velocity
         CD = MAG.*sin( pi/2*abs(VMEAN)/max(VMEAN(:)) );
@@ -306,18 +308,18 @@ function loadROIbutton_Callback(hObject, eventdata, handles)
         matrixx = handles.pcDatasets(planeNum).Info.matrixx; %matrix size in x dimension
         fovx = handles.pcDatasets(planeNum).Info.fovx;  %field of view (mm)
         xres = fovx/matrixx; %resolution (mm). ASSUMED TO BE SAME IN Y DIMENSION
-%         frames = handles.pcDatasets(planeNum).Info.frames;
-%         timeres = handles.pcDatasets(planeNum).Info.timeres; %temporal resolution (ms)
-        frames = handles.pcDatasets(1).Info.frames;
-        timeres = handles.pcDatasets(1).Info.timeres;
+        frames = handles.pcDatasets(planeNum).Info.frames;
+        timeres = handles.pcDatasets(planeNum).Info.timeres; %temporal resolution (ms)
+%         frames = handles.pcDatasets(1).Info.frames;
+%         timeres = handles.pcDatasets(1).Info.timeres;
     else 
         xres = handles.pcDatasets(planeNum).Info.PixelSpacing(1); %resolution (mm) ASSUMED SAME IN Y DIM
-%         rrInterval = handles.pcDatasets(planeNum).Info.NominalInterval; %average RR interval (ms)
-%         frames = handles.pcDatasets(planeNum).Info.CardiacNumberOfImages; %number of cardiac frames
-%         timeres = rrInterval/frames; %temporal resolution (ms)
-        rrInterval = handles.pcDatasets(1).Info.NominalInterval; %avg RR int. (ms) TAKE FIRST TO MATCH TEMP RES
+        rrInterval = handles.pcDatasets(planeNum).Info.NominalInterval; %average RR interval (ms)
         frames = handles.pcDatasets(planeNum).Info.CardiacNumberOfImages; %number of cardiac frames
         timeres = rrInterval/frames; %temporal resolution (ms)
+%         rrInterval = handles.pcDatasets(1).Info.NominalInterval; %avg RR int. (ms) TAKE FIRST TO MATCH TEMP RES
+%         frames = handles.pcDatasets(planeNum).Info.CardiacNumberOfImages; %number of cardiac frames
+%         timeres = rrInterval/frames; %temporal resolution (ms)
     end 
 
     area = sum(roiMask(:))*(xres)^2; %ROI area (mm^2)
@@ -330,7 +332,8 @@ function loadROIbutton_Callback(hObject, eventdata, handles)
     end 
 
     times = double(timeres.*(0:(frames-1))); %original times
-%     tq = 0:0.1:size(v,3)-1; %interpolate time dimension
+%    tq = 0:0.05:frames-1; %interpolate time dimension
+%    timesInterp = double(timeres.*tq); %interpolated times
     sampleDensity = 1000;
     tq = linspace(0,frames-1,sampleDensity); %interpolate time dimension
     timesInterp = double(timeres.*tq); %interpolated times
@@ -908,20 +911,20 @@ function flow = computeTTs(flow,globals)
             flowTemp = circshift(flowTemp,round(length(flowTemp)/3)); %shift by half cycle
         end 
                 
-%         times = flow(i).Uninterp.times; %get time frames (ms)
-        times = flow(1).Uninterp.times;
+        % times = flow(1).Uninterp.times;
+        times = flow(i).Uninterp.times; %get time frames (ms)
         timeres = times(2)-times(1); %temporal resolution (ms)
-%         curvePoints(i).times = times;
-%         curvePoints(i).timeres = timeres;
-        
+        curvePoints(i).times = times;
+        curvePoints(i).timeres = timeres;
+
         [maxPeakVel,maxPeakVelIdx] = max(flowTemp); %find max velocity value and its location
         upstroke = flowTemp(1:maxPeakVelIdx); %define 'upstroke' region of the flow curve
         curvePoints(i).maxPeakVelIdx = maxPeakVelIdx; %add max point to curvePoints struct
         curvePoints(i).maxPeakVel = maxPeakVel; %add max velocity to curvePoints struct
         
-        [~,EightyPointIdx] = min(abs(upstroke-0.8*maxPeakVel)); %get point at 70% max peak
-        curvePoints(i).EightyPointIdx = EightyPointIdx; %add to curvePoints struct
-        curvePoints(i).EightyPoint = flowTemp(EightyPointIdx); %add 70% flow value to curvePoints
+        [~,SeventyPointIdx] = min(abs(upstroke-0.7*maxPeakVel)); %get point at 70% max peak
+        curvePoints(i).SeventyPointIdx = SeventyPointIdx; %add to curvePoints struct
+        curvePoints(i).SeventyPoint = flowTemp(SeventyPointIdx); %add 70% flow value to curvePoints
         
         [~,TwentyPointIdx] = min(abs(upstroke-0.2*maxPeakVel)); %get point at 30% max peak
         curvePoints(i).TwentyPointIdx = TwentyPointIdx; %add to curvePoints struct
@@ -936,13 +939,13 @@ function flow = computeTTs(flow,globals)
     
     % TTPoint - time to point calculation
     for i=1:numROIs
-        tp = times(curvePoints(i).FiftyPointIdx); %get time at 50% peak (ms) 
+        tp = curvePoints(i).times(curvePoints(i).FiftyPointIdx); %get time at 50% peak (ms) 
         flow(i).TTPoint = tp; %add to flow struct
     end    
     
     % TTUpstroke - time to upstroke calculation
     for i=1:numROIs
-        [sigmoid,sigTimes,tp] = sigFit(flows(i,:),times); %see sigFit function below
+        [sigmoid,sigTimes,tp] = sigFit(flows(i,:),curvePoints(i).times); %see sigFit function below
         flow(i).TTUpstroke = tp; %add to flow struct
         flow(i).SigmoidFit = sigmoid;
         flow(i).SigmoidTimes = sigTimes;
@@ -951,9 +954,9 @@ function flow = computeTTs(flow,globals)
     % TTFoot - time to foot calculation
     for i=1:numROIs
         leftIdx = curvePoints(i).TwentyPointIdx;
-        rightIdx = curvePoints(i).EightyPointIdx;
+        rightIdx = curvePoints(i).SeventyPointIdx;
         flowSeg = flows(i,leftIdx:rightIdx);
-        timeSeg = times(leftIdx:rightIdx);
+        timeSeg = curvePoints(i).times(leftIdx:rightIdx);
         p1 = polyfit(timeSeg,flowSeg,1);
         tp = -(p1(2)/p1(1));
         flow(i).TTFoot = tp; %add to flow struct
@@ -961,14 +964,25 @@ function flow = computeTTs(flow,globals)
     end  
   
     % XCorr - cross correlation calculation
-    %since we need 2 curves to get shift, make 1st point = to 1st TTF
-    flow(1).Xcorr = flow(1).TTFoot;
+    %since we need 2 curves to get shift, set 1st time shift = 0
+    flow(1).Xcorr = curvePoints(1).TwentyPointIdx;
     for i=2:numROIs
-        flow1 = flows(i-1,:);
-        flow2 = flows(i,:);
-        [Xcorrs,lags] = xcorr(flow2,flow1,'normalized'); %perform cross correlation between flow curves
-        [~,maxXcorrIdx] = max(Xcorrs); %get index of max Xcorr value
-        shift = lags(maxXcorrIdx); %find time lag of Xcorr peak
+        flowSeg1 = flows(i-1,:);
+        timeSeg1 = curvePoints(i-1).times;
+        lastPoint1 = curvePoints(i-1).times(end); %get time endpoint on first curve
+        flowSeg2 = flows(i,:); %chop second curve between 1 and right index
+        timeSeg2 = curvePoints(i).times; %get times 
+        lastPoint2 = curvePoints(i).times(end); %get time endpoint on second curve
+        if lastPoint2>lastPoint1
+            flowSeg2 = interp1(timeSeg2,flowSeg2,timeSeg1);
+            timeres = curvePoints(i-1).timeres;
+        else
+            flowSeg1 = interp1(timeSeg1,flowSeg1,timeSeg2);
+            timeres = curvePoints(i).timeres;
+        end
+        [Xcorrs,lags] = xcorr(flowSeg2,flowSeg1,'normalized'); %perform cross correlation between flow curves
+        [~,maxLag] = max(Xcorrs);
+        shift = lags(maxLag);
         flow(i).Xcorr = flow(i-1).Xcorr + timeres*shift; %cumulative sum from last time
     end  
     
@@ -1223,7 +1237,7 @@ function flow = organizeFlowInfo(handles)
 function v = load_dat(name, res)
     [fid,errmsg]= fopen(name,'r');
     if fid < 0  %if name does not exist in directory
-        set(handles.MessageBar,'String',['Error Opening Data : ',errmsg]);
+        disp(['Error Opening Data : ',errmsg]);
     end
 
     % Reads in as short, reshapes by image res.
