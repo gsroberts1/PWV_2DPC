@@ -1,4 +1,4 @@
-function varargout = PWV_2DPC(varargin)
+SUMMfunction varargout = PWV_2DPC(varargin)
     % PWV_2DPC MATLAB code for PWV_2DPC.fig
     %      PWV_2DPC, by itself, creates a new PWV_2DPC or raises the existing
     %      singleton*.
