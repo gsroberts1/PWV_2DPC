@@ -360,13 +360,14 @@ function loadROIbutton_Callback(hObject, eventdata, handles)
     roiStatisticsUninterp.stdvROI = stdvROIfit;
     roiStatisticsUninterp.flowROI = flowROIfit; 
 
+
     %%% Create Interpolated Curve with Gaussian Smoothing   
     if frames<=40
         smf = 4; %smooth factor (window)
     elseif frames<=80
-        smf = 5;
-    else
         smf = 6;
+    else
+        smf = 8;
     end 
     meanROIfit = interp1(times,smoothdata(meanROI,'gaussian',smf),timesInterp,'cubic');
     stdvROIfit = interp1(times,smoothdata(stdvROI,'gaussian',smf),timesInterp,'cubic');
@@ -1186,7 +1187,6 @@ function flow = organizeFlowInfo(handles)
     xlabel('Time (ms)'); 
     ylim([0 1]);
     ylabel('Normalized Mean Velocity in ROI (mm/s)'); %set axes labels
-    text(50,1.05,'Note: Waveforms may be distorted if HR different between scans!')
 
     ttp = [flow.TTPoint];
     for i=1:length(ttp)
