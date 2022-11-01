@@ -551,26 +551,18 @@ end
 %scatter(handles.coronal.POINTS(1,:),handles.coronal.POINTS(3,:),'b'); hold on;
 %scatter(handles.sagittal.POINTS(1,:),handles.sagittal.POINTS(3,:),'b');
 figure; scatter(handles.axial.POINTS(1,:),handles.axial.POINTS(3,:),'b'); hold on;
-minx = min(handles.axial.POINTS(1,:));
-maxx = max(handles.axial.POINTS(1,:));
-miny = min(handles.axial.POINTS(3,:));
-maxy = max(handles.axial.POINTS(3,:));
 scatter(PC(1,:),PC(3,:),'filled','g');
-xlim([minx-10 maxx+10]); ylim([miny-10 maxy+10]);
 title('Coronal Projection');
 cor = drawpolyline;
 corP = cor.Position;
 splinePositions2 = interppolygon(corP,150); %interpolate coronal polyline (150 points)
 delete(cor);
 hold on; plot(splinePositions2(:,1),splinePositions2(:,2),'LineWidth',2.0);
-hold off;
 handles.TraceCoronal = gcf;
 
 figure; scatter(handles.sagittal.POINTS(2,:),handles.sagittal.POINTS(3,:),'b');
-hold on; yline(splinePositions2(1,2),'--');
-yline(splinePositions2(end,2),'--');
-scatter(handles.axial.POINTS(2,:),handles.axial.POINTS(3,:),'b');
-scatter(PC(2,:),PC(3,:),'filled','g');
+hold on; scatter(handles.axial.POINTS(2,:),handles.axial.POINTS(3,:),'b');
+hold on; scatter(PC(2,:),PC(3,:),'filled','g');
 title('Sagittal Projection');
 sag = drawpolyline;
 sagP = sag.Position;
@@ -585,21 +577,21 @@ handles.TraceSagittal = gcf;
 x1 = splinePositions1(:,1);
 z1 = splinePositions1(:,2);
 y1 = splinePositions2(:,1);
-%z2 = splinePositions2(:,2);
+z2 = splinePositions2(:,2);
 splineLine(:,1) = x1;
-splineLine(:,2) = y1; %align measurements to sagittal
+splineLine(:,2) = interp1(z2,y1,z1); %align measurements to sagittal
 splineLine(:,3) = z1;
 xSum = sum(abs(splineLine(:,1)));
 ySum = sum(abs(splineLine(:,2)));
 zSum = sum(abs(splineLine(:,3)));
-if ~(ySum < xSum && xSum < zSum)  %should see the most displacement in z, then x, then y
+if (ySum < xSum && xSum < zSum)  %should see the most change in z, then x, then y
     disp('CHECK ORIENTATION!');
-    set(handles.OrientText,'String','WARNING: Check Orientation'); 
-elseif splineLine(1,1)>0  %x should start off negative
+    set(handles.SaveText,'String','Check Orientation'); 
+elseif centerline(1,1)>0
     disp('CHECK ORIENTATION!!!!');
-    set(handles.OrientText,'String','WARNING: Check Orientation'); 
+    set(handles.SaveText,'String','Check Orientation'); 
 else
-    set(handles.OrientText,'String','Proceed to Save'); 
+    set(handles.SaveText,'String','Proceed to Save'); 
 end 
 axes(handles.CenterlineDisplay);
 plot3(splineLine(:,2),splineLine(:,1),splineLine(:,3),'g','LineWidth',8);

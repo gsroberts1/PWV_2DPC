@@ -937,7 +937,7 @@ function flow = computeTTs(flow,globals)
         curvePoints(i).SeventyPointIdx = SeventyPointIdx; %add to curvePoints struct
         curvePoints(i).SeventyPoint = flowTemp(SeventyPointIdx); %add 70% flow value to curvePoints
         
-        [~,TwentyPointIdx] = min(abs(upstroke-0.20)); %get point at 30% max peak
+        [~,TwentyPointIdx] = min(abs(upstroke-0.30)); %get point at 30% max peak
         curvePoints(i).TwentyPointIdx = TwentyPointIdx; %add to curvePoints struct
         curvePoints(i).TwentyPoint = flowTemp(TwentyPointIdx);
         
