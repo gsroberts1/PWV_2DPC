@@ -579,13 +579,18 @@ delete(sag);
 hold on; plot(splinePositions1(:,1),splinePositions1(:,2),'LineWidth',2.0);
 handles.TraceSagittal = gcf;
 
-%splineLine(:,1) = splinePositions2(:,1);
-%splineLine(:,2) = splinePositions1(:,1);
-%splineLine(:,3) = splinePositions1(:,2);
-x1 = splinePositions1(:,1);
+% Regular orientation
 z1 = splinePositions1(:,2);
-y1 = splinePositions2(:,1);
 %z2 = splinePositions2(:,2);
+x1 = splinePositions1(:,1);
+y1 = splinePositions2(:,1);
+
+% Flipped orientation
+% z1 = splinePositions1(:,2);
+% %z2 = splinePositions2(:,2);
+% x1 = splinePositions2(:,1);
+% y1 = splinePositions1(:,1);
+
 splineLine(:,1) = x1;
 splineLine(:,2) = y1; %align measurements to sagittal
 splineLine(:,3) = z1;
@@ -594,9 +599,6 @@ ySum = sum(abs(splineLine(:,2)));
 zSum = sum(abs(splineLine(:,3)));
 if ~(ySum < xSum && xSum < zSum)  %should see the most displacement in z, then x, then y
     disp('CHECK ORIENTATION!');
-    set(handles.OrientText,'String','WARNING: Check Orientation'); 
-elseif splineLine(1,1)>0  %x should start off negative
-    disp('CHECK ORIENTATION!!!!');
     set(handles.OrientText,'String','WARNING: Check Orientation'); 
 else
     set(handles.OrientText,'String','Proceed to Save'); 
