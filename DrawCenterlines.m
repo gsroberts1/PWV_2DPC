@@ -131,7 +131,7 @@ end
 
 splineLine = handles.Centerline;
 axes(handles.CenterlineDisplay);
-plot3(splineLine(:,2),splineLine(:,1),splineLine(:,3),'g','LineWidth',8);
+plot3(splineLine(:,1),splineLine(:,2),splineLine(:,3),'g','LineWidth',8);
 
 
 for t=1:length(handles.cartesian)
@@ -580,16 +580,18 @@ hold on; plot(splinePositions1(:,1),splinePositions1(:,2),'LineWidth',2.0);
 handles.TraceSagittal = gcf;
 
 % Regular orientation
-z1 = splinePositions1(:,2);
-%z2 = splinePositions2(:,2);
-x1 = splinePositions1(:,1);
-y1 = splinePositions2(:,1);
-
-% Flipped orientation
+% x=AP, y=LR, z=SI
+% x1 = splinePositions1(:,1);
+% y1 = splinePositions2(:,1);
 % z1 = splinePositions1(:,2);
 % %z2 = splinePositions2(:,2);
-% x1 = splinePositions2(:,1);
-% y1 = splinePositions1(:,1);
+
+% Flipped orientation
+% x=LR, y=AP, z=SI
+x1 = splinePositions2(:,1);
+y1 = splinePositions1(:,1);
+z1 = splinePositions1(:,2);
+%z2 = splinePositions2(:,2);
 
 splineLine(:,1) = x1;
 splineLine(:,2) = y1; %align measurements to sagittal
@@ -597,14 +599,14 @@ splineLine(:,3) = z1;
 xSum = sum(abs(splineLine(:,1)));
 ySum = sum(abs(splineLine(:,2)));
 zSum = sum(abs(splineLine(:,3)));
-if ~(ySum < xSum && xSum < zSum)  %should see the most displacement in z, then x, then y
+if ~(xSum < ySum && ySum < zSum)  %should see the most displacement in z, then t, then x
     disp('CHECK ORIENTATION!');
     set(handles.OrientText,'String','WARNING: Check Orientation'); 
 else
     set(handles.OrientText,'String','Proceed to Save'); 
 end 
 axes(handles.CenterlineDisplay);
-plot3(splineLine(:,2),splineLine(:,1),splineLine(:,3),'g','LineWidth',8);
+plot3(splineLine(:,1),splineLine(:,2),splineLine(:,3),'g','LineWidth',8);
 
 for t=1:length(handles.cartesian)
     im = handles.cartesian(t).Images;
@@ -644,7 +646,11 @@ end
 for r=1:size(PC,2)
     diff = centerline-PC(:,r)';
     dist = vecnorm(diff');
-    [~,idx] = min(dist);
+    [minn,idx] = min(dist);
+    if minn>10  %should see the most displacement in z, then x, then y
+        disp('CHECK ORIENTATION!');
+        set(handles.OrientText,'String','WARNING: Check Orientation'); 
+    end 
     IDX(r) = idx;
 end 
 
