@@ -28,6 +28,25 @@ mag = flipud(mag);
 cd = flipud(cd);
 vz = flipud(squeeze(vz));
 
+sx = pcviprHeader.sx;
+sy = pcviprHeader.sy;
+sz = pcviprHeader.sz;
+originShift = [sx;sy;sz;1];
+ix = pcviprHeader.ix;
+iy = pcviprHeader.iy;
+iz = pcviprHeader.iz;
+jx = pcviprHeader.jx;
+jy = pcviprHeader.jy;
+jz = pcviprHeader.jz;
+kx = pcviprHeader.kx;
+ky = pcviprHeader.ky;
+kz = pcviprHeader.kz;
+
+xVector = round([ix;iy;iz;0],8); % what direction rows run w/r/to x
+yVector = round([jx;jy;jz;0],8); % what direction the cols run w/r/to y
+zVector = round([kx;ky;kz;0],8); % what direction the cols run w/r/to y
+rotation = [xVector yVector zVector originShift];
+
 spatialRes = nonzeros(abs(([pcviprHeader.ix pcviprHeader.iy pcviprHeader.iz])));
 temporalRes = pcviprHeader.timeres;
 disp(['Spatial Resolution = ' num2str(spatialRes) ' mm']);

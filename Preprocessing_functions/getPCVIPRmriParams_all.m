@@ -1,4 +1,4 @@
-basedir = 'I:\LIFE\patients\Visit2';
+basedir = 'I:\LIFE\patients\Visit1';
 cd(basedir);
 
 d=dir('life*');

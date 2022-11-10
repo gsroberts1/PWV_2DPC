@@ -579,15 +579,14 @@ delete(sag);
 hold on; plot(splinePositions1(:,1),splinePositions1(:,2),'LineWidth',2.0);
 handles.TraceSagittal = gcf;
 
-% Regular orientation
-% x=AP, y=LR, z=SI
+% DEFINE: x=LR, y=AP, z=SI
+% Flipped orientation
 % x1 = splinePositions1(:,1);
 % y1 = splinePositions2(:,1);
 % z1 = splinePositions1(:,2);
 % %z2 = splinePositions2(:,2);
 
-% Flipped orientation
-% x=LR, y=AP, z=SI
+% Regular orientation
 x1 = splinePositions2(:,1);
 y1 = splinePositions1(:,1);
 z1 = splinePositions1(:,2);
@@ -792,73 +791,83 @@ return
 
 
 % --- Executes on button press in Seg2DRadialPush.
-% function Seg2DRadialPush_Callback(hObject, eventdata, handles)
-% handles.CurrView = '2DRadial';
-% radIter = handles.CurrRadial;
-% 
-% [~, anatomicalDir] = uigetfile({'*.dat','Useable Files (*.dat)';
-%    '*.dat',  'DAT files (*.dat)'; ...
-%    '*.*',  'All Files (*.*)'}, 'Select ONE 2DPC Cartesian DAT dataset');
-% 
-% fid = fopen([anatomicalDir 'pcvipr_header.txt'], 'r'); %open header
-% dataArray = textscan(fid,'%s%s%[^\n\r]','Delimiter',' ', ...
-%     'MultipleDelimsAsOne',true,'ReturnOnError',false); %parse header info
-% fclose(fid);
-% dataArray{1,2} = cellfun(@str2num,dataArray{1,2}(:),'UniformOutput',false);
-% pcviprHeader = cell2struct(dataArray{1,2}(:),dataArray{1,1}(:),1); %turn to structure
-% handles.radial(radIter).Info = pcviprHeader; %add pcvipr header to handles
-% dimx = pcviprHeader.matrixx; %resolution in x
-% dimy = pcviprHeader.matrixy; %resolution in y
-% 
-% MAG = load_dat(fullfile(anatomicalDir,'MAG.dat'),[dimx dimy]); %Average magnitude
-% MAG = flipud(MAG);
-% handles.radial(radIter).Images = rescale(MAG);
-% 
-% sx = pcviprHeader.sx;
-% sy = pcviprHeader.sy;
-% sz = pcviprHeader.sz;
-% originShift = [sx;sy;sz;1];
-% ix = pcviprHeader.ix;
-% iy = pcviprHeader.iy;
-% iz = pcviprHeader.iz;
-% jx = pcviprHeader.jx;
-% jy = pcviprHeader.jy;
-% jz = pcviprHeader.jz;
-% kx = pcviprHeader.kx;
-% ky = pcviprHeader.ky;
-% kz = pcviprHeader.kz;
-% 
-% xVector = round([ix;iy;iz;0],8); % what direction rows run w/r/to x
-% yVector = round([jx;jy;jz;0],8); % what direction the cols run w/r/to y
-% zVector = round([kx;ky;kz;0],8); % what direction the cols run w/r/to y
-% handles.radial(radIter).RotationMatrix = ...
-%     [xVector yVector zVector originShift];
-% 
-% 
-% axes(handles.AnatDisplay); %force axes to anatomical plot
-% 
-% rot = handles.radial(radIter).RotationMatrix;
-% minc = str2double(get(handles.MinContrastUpdate,'String'));
-% maxc = str2double(get(handles.MaxContrastUpdate,'String'));
-% 
-% imshow(handles.radial(radIter).Images,[minc maxc]);
-% [x,y] = getpts(); %draw points on image along aorta
-% z = (ones(size(x,1),1)); %add z-coordinates for slice
-% dummy = ones(size(x));
-% points = [x, y, z, dummy]';
-% 
-% for j=1:size(points,2)
-%     POINTS(:,j) = rot*points(:,j);
-% end 
-% points(4,:) = [];
-% POINTS(4,:) = [];
-% handles.cartesian(radIter).points = points;
-% handles.cartesian(radIter).POINTS = POINTS;
-% axes(handles.CenterlineDisplay); hold on;
-% scatter3(POINTS(1,:),POINTS(2,:),POINTS(3,:),'r*', ...
-%     'LineWidth',12, ...
-%     'DisplayName','Rad-2DPC');
-% legend('Location','southeast');
-% 
-% handles.CurrRadial = radIter + 1;
-% guidata(hObject, handles);
+function Seg2DRadialPush_Callback(hObject, eventdata, handles)
+handles.CurrView = '2DRadial';
+radIter = handles.CurrRadial;
+
+[~, anatomicalDir] = uigetfile({'*.txt','Useable Files (*.txt)';
+   '*.txt',  'TXT files (*.txt)'; ...
+   '*.*',  'All Files (*.*)'}, 'Select the "pcvipr_header.txt" header file');
+
+fid = fopen([anatomicalDir 'pcvipr_header.txt'], 'r'); %open header
+dataArray = textscan(fid,'%s%s%[^\n\r]','Delimiter',' ', ...
+    'MultipleDelimsAsOne',true,'ReturnOnError',false); %parse header info
+fclose(fid);
+dataArray{1,2} = cellfun(@str2num,dataArray{1,2}(:),'UniformOutput',false);
+pcviprHeader = cell2struct(dataArray{1,2}(:),dataArray{1,1}(:),1); %turn to structure
+handles.radial(radIter).Info = pcviprHeader; %add pcvipr header to handles
+dimx = pcviprHeader.matrixx; %resolution in x
+dimy = pcviprHeader.matrixy; %resolution in y
+
+if exist('MAG.dat','file')
+    MAG = load_dat(fullfile(anatomicalDir,'MAG.dat'),[dimx dimy]); %Average magnitude
+    MAG = flipud(MAG);
+    sx = pcviprHeader.sx;
+    sy = pcviprHeader.sy;
+    sz = pcviprHeader.sz;
+elseif exist('AAo.h5','file')
+    mag = h5read('AAo.h5','/MAG');
+    MAG = flipud(mean(mag,3));
+else
+    disp('Could not find appropriate file type to load. Needs .dat or .h5 file');
+end 
+handles.radial(radIter).Images = rescale(MAG);
+
+sx = pcviprHeader.sx;
+sy = pcviprHeader.sy;
+sz = pcviprHeader.sz;
+originShift = [sx;sy;sz;1];
+ix = pcviprHeader.ix;
+iy = pcviprHeader.iy;
+iz = pcviprHeader.iz;
+jx = pcviprHeader.jx;
+jy = pcviprHeader.jy;
+jz = pcviprHeader.jz;
+kx = pcviprHeader.kx;
+ky = pcviprHeader.ky;
+kz = pcviprHeader.kz;
+
+xVector = round([ix;iy;iz;0],8); % what direction rows run w/r/to x
+yVector = round([jx;jy;jz;0],8); % what direction the cols run w/r/to y
+zVector = round([kx;ky;kz;0],8); % what direction the cols run w/r/to y
+handles.radial(radIter).RotationMatrix = ...
+    [xVector yVector zVector originShift];
+
+
+axes(handles.AnatDisplay); %force axes to anatomical plot
+
+rot = handles.radial(radIter).RotationMatrix;
+minc = str2double(get(handles.MinContrastUpdate,'String'));
+maxc = str2double(get(handles.MaxContrastUpdate,'String'));
+
+imshow(handles.radial(radIter).Images,[minc maxc]);
+[x,y] = getpts(); %draw points on image along aorta
+z = (ones(size(x,1),1)); %add z-coordinates for slice
+dummy = ones(size(x));
+points = [x, y, z, dummy]';
+
+for j=1:size(points,2)
+    POINTS(:,j) = rot*points(:,j);
+end 
+points(4,:) = [];
+POINTS(4,:) = [];
+handles.radial(radIter).points = points;
+handles.radial(radIter).POINTS = POINTS;
+axes(handles.CenterlineDisplay); hold on;
+scatter3(POINTS(1,:),POINTS(2,:),POINTS(3,:),'r*', ...
+    'LineWidth',12, ...
+    'DisplayName','Rad-2DPC');
+legend('Location','southeast');
+
+handles.CurrRadial = radIter + 1;
+guidata(hObject, handles);
