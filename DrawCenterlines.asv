@@ -548,6 +548,10 @@ else
 end 
 handles.radial(radIter).Images = rescale(MAG);
 
+sx = pcviprHeader.sx;
+sy = pcviprHeader.sy;
+sz = pcviprHeader.sz;
+originShift = [sx;sy;sz;1];
 ix = pcviprHeader.ix;
 iy = pcviprHeader.iy;
 iz = pcviprHeader.iz;
@@ -557,11 +561,6 @@ jz = pcviprHeader.jz;
 kx = pcviprHeader.kx;
 ky = pcviprHeader.ky;
 kz = pcviprHeader.kz;
-sx = pcviprHeader.sx;
-sy = pcviprHeader.sy;
-sz = pcviprHeader.sz;
-% originShift = [sx; sy; sz; 1];
-originShift = [sx; sy; sz; 1] - kz;
 
 xVector = round([ix;iy;iz;0],8); % what direction rows run w/r/to x
 yVector = round([jx;jy;jz;0],8); % what direction the cols run w/r/to y
@@ -581,7 +580,6 @@ points = [x, y, z, dummy]';
 
 for j=1:size(points,2)
     POINTS(:,j) = rot*points(:,j);
-    % POINTS(2,j) = -POINTS(2,j);
 end 
 points(4,:) = [];
 POINTS(4,:) = [];
