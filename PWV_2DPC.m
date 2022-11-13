@@ -184,6 +184,14 @@ function load2DPCbutton_Callback(hObject, eventdata, handles)
             v(:,:,j) = load_dat(fullfile(pcDir,[filesep 'ph_' num2str(j-1,'%03i') '_vd_3.dat']),[resx resy]);
         end
         
+        if resy==640
+            MAG = MAG(:,161:480);
+            CD = CD(:,161:480);
+            VMEAN = VMEAN(:,161:480);
+            mag = mag(:,161:480,:);
+            cd = cd(:,161:480,:);
+            v = v(:,161:480,:);
+        end 
         handles.pcDatasets(pcIter).Images.MAG = flipud(MAG);
         handles.pcDatasets(pcIter).Images.CD = flipud(CD);
         handles.pcDatasets(pcIter).Images.V = flipud(VMEAN);

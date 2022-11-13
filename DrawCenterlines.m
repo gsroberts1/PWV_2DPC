@@ -190,6 +190,7 @@ handles.axial.RotationMatrix = ...
 set(handles.ImageSlider,'Enable','on'); 
 set(handles.MinContrastUpdate,'Enable','on'); 
 set(handles.MaxContrastUpdate,'Enable','on'); 
+set(handles.MaxContrastUpdate,'String',0.75); 
 set(handles.UpdateAxial,'String','Axial Data Loaded'); 
 updateAnatImages(handles)
 
