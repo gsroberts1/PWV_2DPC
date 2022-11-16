@@ -517,7 +517,6 @@ function errorBarRadio_Callback(hObject, eventdata, handles)
 % --- PG SHIFT RADIO - CALLBACK
 function pgShift_Callback(hObject, eventdata, handles)
     handles.global.pgShift = str2double(get(handles.pgShift,'String'));
-    guidata(hObject, handles);
     
     plotVelocity(handles) %replot flow curves with half cycle shift
     if handles.global.startAnalyzing %if we're already analyzing PWVs
@@ -961,14 +960,8 @@ function flow = computeTTs(flow,globals)
     %check if were missing the upslope (happens frequently with PG gating)
     peakAtStart = [curvePoints.maxPeakVelIdx]==1; 
     
-    if sum(peakAtStart)
-        for i=1:numROIs
-            flow(i).TTPoint = NaN; %add to flow struct
-            flow(i).TTUpstroke = NaN;
-            flow(i).TTFoot = NaN;
-            flow(i).Xcorr = NaN;
-        end   
-    else
+    if sum(peakAtStart)<1
+        
         % TTPoint - time to point calculation
         for i=1:numROIs
             tp = curvePoints(i).times(curvePoints(i).FiftyPointIdx); %get time at 50% peak (ms) 
@@ -1014,20 +1007,24 @@ function flow = computeTTs(flow,globals)
             end
             
             % Homemade cross-correlation
-%             L = (1:length(flowSeg2))-(length(flowSeg2)/2);
-%             for k=1:length(L)
-%                 xc(i) = sum(flowSeg2 .* circshift(flowSeg1,L(k)));
-%             end 
-%             [~,idx] = max(xc);
-%             shift = L(idx);
+            L = (1:1000)-(length(flowSeg2)/2);
+            for k=1:length(L)
+                xc(i) = sum(flowSeg2 .* circshift(flowSeg1,L(k)));
+            end 
+            [~,idx] = max(xc);
+            shift = L(idx);
             
             %Built-in cross-correlation (fails if peaks are on edge)
-            [Xcorrs,lags] = xcorr(flowSeg2,flowSeg1,'normalized'); %perform cross correlation between flow curves
-            [~,maxLag] = max(Xcorrs);
-            shift = lags(maxLag);
+            %[Xcorrs,lags] = xcorr(flowSeg2,flowSeg1,'normalized'); %perform cross correlation between flow curves
+            %[~,maxLag] = max(Xcorrs);
+            %shift = lags(maxLag);
+            
             flow(i).Xcorr = flow(i-1).Xcorr + timeres*shift; %cumulative sum from last time
         end  
+    else
+
     end 
+    
     
  
 % --- Turn PolyLine into SplineLine    
@@ -1175,7 +1172,6 @@ function flow = organizeFlowInfo(handles)
 % --- Save Time-To Plots for record-keeping and debugging
  function saveTTplots(handles,flow)   
     times = handles.pcDatasets(1).ROIdataUninterp(1).times;
-    pgShift = handles.global.pgShift;
     figure('units','normalized','outerposition',[0 0 1 1]); 
     plot(times, zeros(1,length(times)) ,'Color','black','LineWidth',1.5); %line of y=0 (for visual reference)
     % Note that above we assume same time scale for each plane (MR scan)

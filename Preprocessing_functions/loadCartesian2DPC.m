@@ -3,12 +3,14 @@ if isempty(dirinfo)
     disp('NO DICOMS FOUND IN DIRECTORY');
 end 
 
-header = dicominfo(dirinfo(1).name);
 for file = 1:length(dirinfo)
     DICOMS(:,:,file) = dicomread(dirinfo(file).name);
+    header = dicominfo(dirinfo(file).name);
+    trigs(file) = header.TriggerTime;
 end 
-mag = DICOMS(:,:,41:end);
-vz = DICOMS(:,:,1:40);
+cut = length(dirinfo)/2;
+vz = DICOMS(:,:,1:cut);
+mag = DICOMS(:,:,(cut+1):end);
 
 originShift = [header.ImagePositionPatient;1]; % origin is top left corner of image
 xres = header.PixelSpacing(1);
@@ -28,4 +30,4 @@ spatialRes = header.PixelSpacing(1);
 temporalRes = header.NominalInterval/header.CardiacNumberOfImages;
 disp(['Spatial Resolution = ' num2str(spatialRes) ' mm']);
 disp(['Temporal Resolution = ' num2str(temporalRes) ' ms']);
-clear dirinfo file header 
+clear dirinfo file header xVector yVector zVector

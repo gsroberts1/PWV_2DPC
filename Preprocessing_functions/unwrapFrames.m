@@ -1,6 +1,23 @@
-% Load data, enter wrapped frames, set Venc
-loadRadial2DPC;
-frames = 20:29;
+%% Data Loading
+directory = pwd;
+fid = fopen([directory '\pcvipr_header.txt'], 'r');
+dataArray = textscan(fid, '%s%s%[^\n\r]', 'Delimiter', ' ', 'MultipleDelimsAsOne', true, 'ReturnOnError', false);
+fclose(fid); clear ans;
+
+dataArray{1,2} = cellfun(@str2num,dataArray{1,2}(:), 'UniformOutput', false);
+pcviprHeader = cell2struct(dataArray{1,2}(:), dataArray{1,1}(:), 1);
+resx = pcviprHeader.matrixx;  
+resy = pcviprHeader.matrixy;  
+nframes = pcviprHeader.frames;           
+
+vz  = zeros(resx,resy,nframes);
+for j = 1:nframes   
+    vz(:,:,j) = load_dat(fullfile(directory, ['\ph_' num2str(j-1,'%03i') '_vd_3.dat']),[resx resy]);
+end
+vz = squeeze(vz);
+
+%% Unwrapping
+frames = 16:20;
 Venc = 1500;
 
 % Draw ROI for all frames
@@ -21,7 +38,7 @@ for i=1:length(frames)
     newPlane = plane.*roiMask;
     newPlane = (newPlane/Venc)*pi;
     UW = Unwrap_TIE_DCT_Iter(newPlane);
-    UW = (UW/pi)*Venc;
+    UW = (UW/pi)*-Venc;
     %UW = UW-3000;
     %UW(UW==-3000) = 0;
     %UW = newROI.*UW;
