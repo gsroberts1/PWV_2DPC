@@ -59,6 +59,7 @@ set(handles.ShowPlanesRadio,'Enable','off');
 handles.CurrView = 'Axial';
 handles.CurrCartesian = 1;
 handles.CurrRadial = 1;
+handles.SMS = 0;
 
 guidata(hObject, handles);
 % UIWAIT makes DrawCenterlines wait for user response (see UIRESUME)
@@ -87,7 +88,12 @@ load([clDir clFile]);
 handles.axial = anatCLdataset.Axial;
 %handles.coronal = anatCLdataset.Coronal;
 handles.sagittal = anatCLdataset.Sagittal;
-handles.cartesian = anatCLdataset.Cartesian2DPC;
+if isfield(anatCLdataset,'Cartesian2DPC')
+    handles.cartesian = anatCLdataset.Cartesian2DPC;
+end 
+if isfield(anatCLdataset,'RadialSMS')
+    handles.radial = anatCLdataset.RadialSMS;
+end 
 handles.Centerline = anatCLdataset.Centerline;
 updateAnatImages(handles)
 
@@ -459,6 +465,7 @@ guidata(hObject, handles);
 % --- Executes on button press in Seg2DCartPush.
 function Seg2DCartPush_Callback(hObject, eventdata, handles)
 handles.CurrView = '2DCartesian';
+handles.SMS = 0;
 cartIter = handles.CurrCartesian;
 [anatomicalFile, anatomicalDir] = uigetfile({'*.dcm;*.dicom;','Useable Files (*.dcm,*.dicom)';
    '*.dcm',  'DICOM files (*.dcm)'; ...
@@ -522,34 +529,23 @@ guidata(hObject, handles);
 % --- Executes on button press in Seg2DRadialPush.
 function Seg2DRadialPush_Callback(hObject, eventdata, handles)
 handles.CurrView = '2DRadial';
+handles.SMS = 1;
 radIter = handles.CurrRadial;
 
-[~, anatomicalDir] = uigetfile({'*.txt','Useable Files (*.txt)';
-   '*.txt',  'TXT files (*.txt)'; ...
-   '*.*',  'All Files (*.*)'}, 'Select the "pcvipr_header.txt" header file');
+[hdf5File, hdf5Dir] = uigetfile({'*.h5','Useable Files (*.h5)';
+   '*.h5',  'HDF5 files (*.h5)'; ...
+   '*.*',  'All Files (*.*)'}, 'Select the AAo.h5 or AbdAo.h5 file');
 
-fid = fopen([anatomicalDir 'pcvipr_header.txt'], 'r'); %open header
+fid = fopen([hdf5Dir 'pcvipr_header.txt'], 'r'); %open header
 dataArray = textscan(fid,'%s%s%[^\n\r]','Delimiter',' ', ...
     'MultipleDelimsAsOne',true,'ReturnOnError',false); %parse header info
 fclose(fid);
 dataArray{1,2} = cellfun(@str2num,dataArray{1,2}(:),'UniformOutput',false);
 pcviprHeader = cell2struct(dataArray{1,2}(:),dataArray{1,1}(:),1); %turn to structure
 handles.radial(radIter).Info = pcviprHeader; %add pcvipr header to handles
-dimx = pcviprHeader.matrixx; %resolution in x
-dimy = pcviprHeader.matrixy; %resolution in y
 
-if exist(fullfile(anatomicalDir,'MAG.dat'),'file')
-    MAG = load_dat(fullfile(anatomicalDir,'MAG.dat'),[dimx dimy]); %Average magnitude
-    MAG = flipud(MAG);
-elseif exist(fullfile(anatomicalDir,'AAo.h5'),'file')
-    aao = h5read(fullfile(anatomicalDir,'AAo.h5'),'/MAG');
-    AAo = flipud(mean(aao,3));
-elseif exist(fullfile(anatomicalDir,'AbdAo.h5'),'file')
-    abdao = h5read(fullfile(anatomicalDir,'AbdAo.h5'),'/MAG');
-    AbdAo = flipud(mean(abdao,3));
-else
-    disp('Could not find appropriate file type to load. Needs .dat or .h5 file');
-end 
+mag = h5read(fullfile(hdf5Dir,hdf5File),'/MAG');
+MAG = flipud(mean(mag,3));
 handles.radial(radIter).Images = rescale(MAG);
 
 ix = pcviprHeader.ix;
@@ -564,8 +560,15 @@ kz = pcviprHeader.kz;
 sx = pcviprHeader.sx;
 sy = pcviprHeader.sy;
 sz = pcviprHeader.sz;
-% originShift = [sx; sy; sz; 1];
-originShift = [sx; sy; sz; 1] - kz;
+
+%SMS_gap = 78;
+SMS_gap = 90; %180mm about sz
+if strcmp(hdf5File,'AAo.h5')
+    sz = sz + SMS_gap;
+else
+    sz = sz - SMS_gap;
+end 
+originShift = [sx; sy; sz; 1];
 
 xVector = round([ix;iy;iz;0],8); % what direction rows run w/r/to x
 yVector = round([jx;jy;jz;0],8); % what direction the cols run w/r/to y
@@ -578,7 +581,9 @@ minc = str2double(get(handles.MinContrastUpdate,'String'));
 maxc = str2double(get(handles.MaxContrastUpdate,'String'));
 
 imshow(handles.radial(radIter).Images,[minc maxc]);
-[x,y] = getpts(); %draw points on image along aorta
+[y,x] = getpts(); %draw points on image along aorta
+x = pcviprHeader.matrixx - x;
+%y = pcviprHeader.matrixy - y;
 z = (ones(size(x,1),1)); %add z-coordinates for slice
 dummy = ones(size(x));
 points = [x, y, z, dummy]';
@@ -626,8 +631,14 @@ end
 % --- Executes on button press in CreateCenterlinePush.
 function CreateCenterlinePush_Callback(hObject, eventdata, handles)
 PC = [];
-for p=1:length(handles.cartesian)
-    PC = [PC handles.cartesian(p).POINTS];
+if handles.SMS
+    for p=1:length(handles.radial)
+        PC = [PC handles.radial(p).POINTS];
+    end 
+else
+    for p=1:length(handles.cartesian)
+        PC = [PC handles.cartesian(p).POINTS];
+    end 
 end 
 
 %scatter(handles.coronal.POINTS(1,:),handles.coronal.POINTS(3,:),'b'); hold on;
@@ -688,27 +699,49 @@ else
 end 
 axes(handles.CenterlineDisplay);
 plot3(splineLine(:,1),splineLine(:,2),splineLine(:,3),'g','LineWidth',8);
-
-for t=1:length(handles.cartesian)
-    im = handles.cartesian(t).Images;
-    dim1 = size(im,1);
-    dim2 = size(im,2);
-    [x,y,z] = meshgrid(1:dim1,1:dim2,1:2);
-    rot = handles.cartesian(t).RotationMatrix;
-    row1 = nonzeros(rot(1,:));
-    row2 = nonzeros(rot(2,:));
-    row3 = nonzeros(rot(3,:));
-    X = x.*row1(1) + row1(2);
-    Y = y.*row2(1) + row2(2);
-    Z = z.*row3(1) + row3(2);
-    xslice = []; 
-    yslice = []; 
-    zslice = Z(1,1,1);
-    I = repmat(im,[1 1 2]);
-    Slice(t) = slice(X,Y,Z,I,xslice,yslice,zslice); 
-    handles.Slices = Slice;
-    shading interp; colormap gray; hold on;
-end 
+% if handles.SMS
+%     for t=1:length(handles.radial)
+%         im = handles.radial(t).Images;
+%         dim1 = size(im,1);
+%         dim2 = size(im,2);
+%         [x,y,z] = meshgrid(1:dim1,1:dim2,1:2);
+%         rot = handles.radial(t).RotationMatrix;
+%         row1 = nonzeros(rot(1,:));
+%         row2 = nonzeros(rot(2,:));
+%         row3 = nonzeros(rot(3,:));
+%         X = x.*row1(1) + row1(2);
+%         Y = y.*row2(1) + row2(2);
+%         Z = z.*row3(1) + row3(2);
+%         xslice = []; 
+%         yslice = []; 
+%         zslice = Z(1,1,1);
+%         I = repmat(im,[1 1 2]);
+%         Slice(t) = slice(X,Y,Z,I,xslice,yslice,zslice); 
+%         handles.Slices = Slice;
+%         shading interp; colormap gray; hold on;
+%     end 
+% else
+    for t=1:length(handles.cartesian)
+        im = handles.cartesian(t).Images;
+        dim1 = size(im,1);
+        dim2 = size(im,2);
+        [x,y,z] = meshgrid(1:dim1,1:dim2,1:2);
+        rot = handles.cartesian(t).RotationMatrix;
+        row1 = nonzeros(rot(1,:));
+        row2 = nonzeros(rot(2,:));
+        row3 = nonzeros(rot(3,:));
+        X = x.*row1(1) + row1(2);
+        Y = y.*row2(1) + row2(2);
+        Z = z.*row3(1) + row3(2);
+        xslice = []; 
+        yslice = []; 
+        zslice = Z(1,1,1);
+        I = repmat(im,[1 1 2]);
+        Slice(t) = slice(X,Y,Z,I,xslice,yslice,zslice); 
+        handles.Slices = Slice;
+        shading interp; colormap gray; hold on;
+    end 
+% end 
 
 set(handles.ShowPlanesRadio,'Enable','on','Value',1)
 handles.Centerline = splineLine;
@@ -720,8 +753,14 @@ guidata(hObject, handles);
 function SaveCenterlinePush_Callback(hObject, eventdata, handles)
 centerline = handles.Centerline;
 PC = [];
-for p=1:length(handles.cartesian)
-    PC = [PC handles.cartesian(p).POINTS];
+if handles.SMS
+    for p=1:length(handles.radial)
+        PC = [PC handles.radial(p).POINTS];
+    end 
+else
+    for p=1:length(handles.cartesian)
+        PC = [PC handles.cartesian(p).POINTS];
+    end 
 end 
 
 for r=1:size(PC,2)
@@ -747,21 +786,39 @@ end
 anatCLdataset.Axial = handles.axial;
 %anatCLdataset.Coronal = handles.coronal;
 anatCLdataset.Sagittal = handles.sagittal;
-anatCLdataset.Cartesian2DPC = handles.cartesian;
+if isfield(handles,'cartesian')
+    anatCLdataset.Cartesian2DPC = handles.cartesian;
+end 
+if isfield(handles,'radial')
+    anatCLdataset.RadialSMS = handles.radial;
+end 
 anatCLdataset.Centerline = centerline;
 anatCLdataset.Distances = distances;
 anatCLdataset.ROIindices = IDX;
 anatCLdataset.PlaneDistances = PlaneDistances;
 directory = uigetdir(); %saving location
 mkdir([directory filesep 'CenterlineData']);
-save([directory filesep 'anatCLdataset.mat'],'anatCLdataset');
+if handles.SMS
+    save([directory filesep 'anatCLdataset_SMS.mat'],'anatCLdataset');
+else
+    save([directory filesep 'anatCLdataset.mat'],'anatCLdataset');
+end 
 
-frame = getframe(handles.CenterlineDisplay);
-imwrite(frame2im(frame),[directory filesep 'CenterlineData' filesep 'Centerline3D.png']);
-frame = getframe(handles.TraceCoronal);
-imwrite(frame2im(frame),[directory filesep 'CenterlineData' filesep 'CoronalTrace.png']);
-frame = getframe(handles.TraceSagittal);
-imwrite(frame2im(frame),[directory filesep 'CenterlineData' filesep 'SagittalTrace.png']);
+if handles.SMS
+    frame = getframe(handles.CenterlineDisplay);
+    imwrite(frame2im(frame),[directory filesep 'CenterlineData' filesep 'Centerline3D_SMS.png']);
+    frame = getframe(handles.TraceCoronal);
+    imwrite(frame2im(frame),[directory filesep 'CenterlineData' filesep 'CoronalTrace_SMS.png']);
+    frame = getframe(handles.TraceSagittal);
+    imwrite(frame2im(frame),[directory filesep 'CenterlineData' filesep 'SagittalTrace_SMS.png']);
+else
+    frame = getframe(handles.CenterlineDisplay);
+    imwrite(frame2im(frame),[directory filesep 'CenterlineData' filesep 'Centerline3D.png']);
+    frame = getframe(handles.TraceCoronal);
+    imwrite(frame2im(frame),[directory filesep 'CenterlineData' filesep 'CoronalTrace.png']);
+    frame = getframe(handles.TraceSagittal);
+    imwrite(frame2im(frame),[directory filesep 'CenterlineData' filesep 'SagittalTrace.png']);
+end 
 
 set(handles.SaveText,'String','Centerline Saved!'); 
 
