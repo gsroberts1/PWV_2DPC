@@ -421,11 +421,9 @@ function loadROIbutton_Callback(hObject, eventdata, handles)
     stdv_interp = interp1(times,stdv_roi,times_interp,'linear');
     flow_interp = interp1(times,flow_roi,times_interp,'linear');
     
-    Shifted.times = times_interp;
     Shifted.mean_v = smoothdata(mean_interp,'gaussian',smf);
     Shifted.stdv_v = smoothdata(stdv_interp,'gaussian',smf);
     Shifted.flow = smoothdata(flow_interp,'gaussian',smf);
-    
 
     %%% Save all data into handles
     if isstruct(handles.pcDatasets(planeNum).Interp)
@@ -1310,13 +1308,13 @@ function flow = organizeFlowInfo(handles)
     
     ttf = [flow.TTFoot];
     for i=1:length(ttf)
-        [~,idx] = min( abs(times(i,:)-ttf(i)) );
+        [~,idx] = min( abs(times-ttf(i)) );
         [~,idx2] = max(velocity(i,:));
         P1 = flow(i).P1;
-        x = times(i,idx:idx2);
+        x = times(idx:idx2);
         y = P1(1)*x + P1(2);
         h(i) = plot(x,y,'k');
-        h2(i) = scatter(times(i,idx),0,'k');
+        h2(i) = scatter(times(idx),0,'k');
     end 
     title('Time-To-Foot');
     frame = getframe(gcf);
@@ -1326,13 +1324,13 @@ function flow = organizeFlowInfo(handles)
         
     ttu = [flow.TTUpstroke];
     for i=1:length(ttu)
-        [~,idx] = min( abs(times(i,:)-ttu(i)) );
+        [~,idx] = min( abs(times-ttu(i)) );
         [~,maxIdx] = max(velocity(i,:));
         upstroke = velocity(i,1:maxIdx);
         [minVel,~] = min(upstroke);
-        h(i) = scatter(times(i,idx),velocity(i,idx),'k','filled');
-        h2(i) = scatter(times(i,idx),0,'k');
-        h3(i) = plot([times(i,idx) times(i,idx)],[velocity(i,idx),0],':k');
+        h(i) = scatter(times(idx),velocity(i,idx),'k','filled');
+        h2(i) = scatter(times(idx),0,'k');
+        h3(i) = plot([times(idx) times(idx)],[velocity(i,idx),0],':k');
         sigT = flow(i).SigmoidTimes;
         sig = flow(i).SigmoidFit;
         sigShift = sig - sig*minVel + minVel;
@@ -1346,10 +1344,10 @@ function flow = organizeFlowInfo(handles)
     
     xcorr = [flow.Xcorr];
     for i=1:length(xcorr)
-        [~,idx] = min( abs(times(i,:)-xcorr(i)) );
-        h(i) = scatter(times(i,idx),velocity(i,idx),'k','filled');
-        h2(i) = scatter(times(i,idx),0,'k');
-        h3(i) = plot([times(i,idx) times(i,idx)],[velocity(i,idx),0],':k');
+        [~,idx] = min( abs(times-xcorr(i)) );
+        h(i) = scatter(times(idx),velocity(i,idx),'k','filled');
+        h2(i) = scatter(times(idx),0,'k');
+        h3(i) = plot([times(idx) times(idx)],[velocity(i,idx),0],':k');
     end 
     title('Cross Correlation Time Lag');
     frame = getframe(gcf);

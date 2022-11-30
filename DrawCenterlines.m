@@ -137,7 +137,7 @@ end
 
 splineLine = handles.Centerline;
 axes(handles.CenterlineDisplay);
-plot3(splineLine(:,1),splineLine(:,2),splineLine(:,3),'g','LineWidth',8);
+plot3(splineLine(:,1),splineLine(:,2),splineLine(:,3),'g','LineWidth',5);
 
 
 for t=1:length(handles.cartesian)
@@ -691,14 +691,9 @@ splineLine(:,3) = z1;
 xSum = sum(abs(splineLine(:,1)));
 ySum = sum(abs(splineLine(:,2)));
 zSum = sum(abs(splineLine(:,3)));
-if ~(xSum < ySum && ySum < zSum)  %should see the most displacement in z, then t, then x
-    disp('CHECK ORIENTATION!');
-    set(handles.OrientText,'String','WARNING: Check Orientation'); 
-else
-    set(handles.OrientText,'String','Proceed to Save'); 
-end 
+
 axes(handles.CenterlineDisplay);
-plot3(splineLine(:,1),splineLine(:,2),splineLine(:,3),'g','LineWidth',8);
+plot3(splineLine(:,1),splineLine(:,2),splineLine(:,3),'g','LineWidth',5);
 % if handles.SMS
 %     for t=1:length(handles.radial)
 %         im = handles.radial(t).Images;
