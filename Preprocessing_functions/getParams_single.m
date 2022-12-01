@@ -1,4 +1,3 @@
-basedir = pwd;
 now = datestr(now,'mm/dd/yyyy');
 
 %% Cartesian
