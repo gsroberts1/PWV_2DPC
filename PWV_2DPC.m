@@ -343,16 +343,29 @@ function loadROIbutton_Callback(hObject, eventdata, handles)
     mask = sqrt(X.^2 + Y.^2)<=radius; %anything outside radius is ignored
 
     %%% Create velocity/flow curves
+%     if isfield(handles.pcDatasets(planeNum).Info,'matrixx') %if radial data (pcvipr recon)
+%         matrixx = handles.pcDatasets(planeNum).Info.matrixx; %matrix size in x dimension
+%         fovx = handles.pcDatasets(planeNum).Info.fovx;  %field of view (mm)
+%         xres = fovx/matrixx; %resolution (mm). ASSUMED TO BE SAME IN Y DIMENSION
+%         frames = handles.pcDatasets(planeNum).Info.frames;
+%         timeres = handles.pcDatasets(planeNum).Info.timeres; %temporal resolution (ms)
+%     else 
+%         xres = handles.pcDatasets(planeNum).Info.PixelSpacing(1); %resolution (mm) ASSUMED SAME IN Y DIM
+%         rr_interval = handles.pcDatasets(planeNum).Info.NominalInterval; %average RR interval (ms)
+%         frames = handles.pcDatasets(planeNum).Info.CardiacNumberOfImages; %number of cardiac frames
+%         timeres = rr_interval/frames; %temporal resolution (ms)
+%     end 
+    
     if isfield(handles.pcDatasets(planeNum).Info,'matrixx') %if radial data (pcvipr recon)
-        matrixx = handles.pcDatasets(planeNum).Info.matrixx; %matrix size in x dimension
-        fovx = handles.pcDatasets(planeNum).Info.fovx;  %field of view (mm)
+        matrixx = handles.pcDatasets(1).Info.matrixx; %matrix size in x dimension
+        fovx = handles.pcDatasets(1).Info.fovx;  %field of view (mm)
         xres = fovx/matrixx; %resolution (mm). ASSUMED TO BE SAME IN Y DIMENSION
-        frames = handles.pcDatasets(planeNum).Info.frames;
-        timeres = handles.pcDatasets(planeNum).Info.timeres; %temporal resolution (ms)
+        frames = handles.pcDatasets(1).Info.frames;
+        timeres = handles.pcDatasets(1).Info.timeres; %temporal resolution (ms)
     else 
-        xres = handles.pcDatasets(planeNum).Info.PixelSpacing(1); %resolution (mm) ASSUMED SAME IN Y DIM
-        rr_interval = handles.pcDatasets(planeNum).Info.NominalInterval; %average RR interval (ms)
-        frames = handles.pcDatasets(planeNum).Info.CardiacNumberOfImages; %number of cardiac frames
+        xres = handles.pcDatasets(1).Info.PixelSpacing(1); %resolution (mm) ASSUMED SAME IN Y DIM
+        rr_interval = handles.pcDatasets(1).Info.NominalInterval; %average RR interval (ms)
+        frames = handles.pcDatasets(1).Info.CardiacNumberOfImages; %number of cardiac frames
         timeres = rr_interval/frames; %temporal resolution (ms)
     end 
 
