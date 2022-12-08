@@ -71,6 +71,7 @@ function PWV_2DPC_OpeningFcn(hObject, eventdata, handles, varargin)
     handles.global.totalROIs = 0;
     handles.global.pgShift = 0;
     handles.global.pcIter = 1;
+    handles.global.analysisType = 'Absolute_Time'; % (or 'Relative_Tme') use timestamps for each acq separately
 
     set(handles.load2DPCbutton,'Enable','off');
     set(handles.pcPlanePopup,'Enable','off');
@@ -347,16 +348,12 @@ function loadROIbutton_Callback(hObject, eventdata, handles)
         matrixx = handles.pcDatasets(planeNum).Info.matrixx; %matrix size in x dimension
         fovx = handles.pcDatasets(planeNum).Info.fovx;  %field of view (mm)
         xres = fovx/matrixx; %resolution (mm). ASSUMED TO BE SAME IN Y DIMENSION
-        %frames = handles.pcDatasets(planeNum).Info.frames;
-        %timeres = handles.pcDatasets(planeNum).Info.timeres; %temporal resolution (ms)
-        frames = handles.pcDatasets(1).Info.frames;
-        timeres = handles.pcDatasets(1).Info.timeres; %temporal resolution (ms)
+        frames = handles.pcDatasets(planeNum).Info.frames;
+        timeres = handles.pcDatasets(planeNum).Info.timeres; %temporal resolution (ms)
     else 
         xres = handles.pcDatasets(planeNum).Info.PixelSpacing(1); %resolution (mm) ASSUMED SAME IN Y DIM
-        %rr_interval = handles.pcDatasets(planeNum).Info.NominalInterval; %average RR interval (ms)
-        %frames = handles.pcDatasets(planeNum).Info.CardiacNumberOfImages; %number of cardiac frames
-        rr_interval = handles.pcDatasets(1).Info.NominalInterval; %average RR interval (ms)
-        frames = handles.pcDatasets(1).Info.CardiacNumberOfImages; %number of cardiac frames
+        rr_interval = handles.pcDatasets(planeNum).Info.NominalInterval; %average RR interval (ms)
+        frames = handles.pcDatasets(planeNum).Info.CardiacNumberOfImages; %number of cardiac frames
         timeres = rr_interval/frames; %temporal resolution (ms)
     end 
     
@@ -643,7 +640,7 @@ function completeLoadingROI_Callback(hObject, eventdata, handles)
     
     cla(handles.TimeVsDistance,'reset'); %reset PWV plot
     axes(handles.TimeVsDistance); hold on; %force axes to PWV plot
-    xlabel('Distance (mm)'); ylabel('Time Shift (ms)'); %label axes
+    xlabel('Centerline Distance (mm)'); ylabel('Time Shift (ms)'); %label axes
     sz = 30; %create marker sizes (filled in circles) of 30 pixels
     legendSet = {}; %initialize legend cell array
     if get(handles.ttpointRadio,'Value')
@@ -761,129 +758,137 @@ function exportAnalysisButton_Callback(hObject, eventdata, handles)
     date = datestr(now); %get current date/time
     chopDate = [date(1:2) '-' date(4:6) '-' date(10:11) '-' date(13:14) date(16:17)]; %chop date up
     globals = handles.global;
-    flow = computeTTs(handles.flow,handles.global); %recalculate flow struct for each interp
-    numCompares = numel(flow);
-    handles.flow = flow;
-    guidata(hObject, handles);
     
-    distance = [0 cumsum(handles.centerline.PlaneDistances)];
-    distance = distance(1:numCompares);
-    ttpoint = [handles.flow.TTPoint]; 
-    ttfoot = [handles.flow.TTFoot];
-    ttupstroke = [handles.flow.TTUpstroke]; 
-    xcorr = [handles.flow.Xcorr];
-    ttaverage = mean([ttfoot; ttpoint; ttupstroke; xcorr],1); %get average time shift
+    for a=1:2
+        flow = computeTTs(handles.flow,handles.global); %recalculate flow struct for each interp
+        numCompares = numel(flow);
+        handles.flow = flow;
+        guidata(hObject, handles);
 
-    Distances = abs(diff([distance 0])); %add zero at end to get full distance
-    TTPoint = [diff(ttpoint) sum(diff(ttpoint))];
-    TTFoot = [diff(ttfoot) sum(diff(ttfoot))];
-    TTUpstroke = [diff(ttupstroke) sum(diff(ttupstroke))];
-    Xcorr = [diff(xcorr) sum(diff(xcorr))];
-    TTaverage = [diff(ttaverage) sum(diff(ttaverage))];
+        distance = [0 cumsum(handles.centerline.PlaneDistances)];
+        distance = distance(1:numCompares);
+        ttpoint = [handles.flow.TTPoint]; 
+        ttfoot = [handles.flow.TTFoot];
+        ttupstroke = [handles.flow.TTUpstroke]; 
+        xcorr = [handles.flow.Xcorr];
+        ttaverage = mean([ttfoot; ttpoint; ttupstroke; xcorr],1); %get average time shift
 
-    % Make first column for excel file
-    %numCompares = length(Distances); %get number of PWV measurements
-    for d=1:(numCompares-1)
-        PLANES{d} = [flow(d).Name ' --> ' flow(d+1).Name]; %get names for Excel
+        Distances = abs(diff([distance 0])); %add zero at end to get full distance
+        TTPoint = [diff(ttpoint) sum(diff(ttpoint))];
+        TTFoot = [diff(ttfoot) sum(diff(ttfoot))];
+        TTUpstroke = [diff(ttupstroke) sum(diff(ttupstroke))];
+        Xcorr = [diff(xcorr) sum(diff(xcorr))];
+        TTaverage = [diff(ttaverage) sum(diff(ttaverage))];
+
+        % Make first column for excel file
+        %numCompares = length(Distances); %get number of PWV measurements
+        for d=1:(numCompares-1)
+            PLANES{d} = [flow(d).Name ' --> ' flow(d+1).Name]; %get names for Excel
+        end 
+        PLANES{numCompares} = [flow(1).Name ' --> ' flow(end).Name]; %get names for Excel
+        PLANES{numCompares+1} = 'FIT_PWV'; %These rows be for PWV fit parameters
+        PLANES{numCompares+2} = 'm (slope)';
+        PLANES{numCompares+3} = 'b (y-intercept)';
+        PLANES{numCompares+4} = 'R^2';
+
+        PWV_Point = NaN(numCompares+4,1); %add dummy rows to match PLANES size
+        PWV_Foot = NaN(numCompares+4,1);
+        PWV_Upstroke = NaN(numCompares+4,1);
+        PWV_Xcorr = NaN(numCompares+4,1);
+        PWV_Average = zeros(1,numCompares);
+
+        for i=1:numCompares
+            PWV_Point(i) = Distances(i)/TTPoint(i); %calculate pointwise PWVs (not fits)
+            PWV_Foot(i) = Distances(i)/TTFoot(i);
+            PWV_Upstroke(i) = Distances(i)/TTUpstroke(i);
+            PWV_Xcorr(i) = Distances(i)/Xcorr(i);
+            PWV_Average(i) = (PWV_Point(i)+PWV_Foot(i)+PWV_Upstroke(i)+PWV_Xcorr(i))/4; %get simple average of all PWVs
+        end 
+
+        [linePointFit,S] = polyfit(distance,ttpoint,1); %get linear regression fit for all points 
+        PWV_Point(numCompares+1) = 1/linePointFit(1); %calculate PWV (=1/slope)
+        PWV_Point(numCompares+2) = linePointFit(1); %get slope
+        PWV_Point(numCompares+3) = linePointFit(2); %get y-intercept
+        PWV_Point(numCompares+4) = (1 - (S.normr/norm(ttpoint - mean(ttpoint)))^2); %R^2
+
+        [lineFootFit,S] = polyfit(distance,ttfoot,1);
+        PWV_Foot(numCompares+1) = 1/lineFootFit(1);
+        PWV_Foot(numCompares+2) = lineFootFit(1);
+        PWV_Foot(numCompares+3) = lineFootFit(2);
+        PWV_Foot(numCompares+4) = (1 - (S.normr/norm(ttfoot - mean(ttfoot)))^2);
+
+        [lineUpstrokeFit,~] = polyfit(distance,ttupstroke,1);
+        PWV_Upstroke(numCompares+1) = 1/lineUpstrokeFit(1);
+        PWV_Upstroke(numCompares+2) = lineUpstrokeFit(1);
+        PWV_Upstroke(numCompares+3) = lineUpstrokeFit(2);
+        PWV_Upstroke(numCompares+4) = (1 - (S.normr/norm(ttupstroke - mean(ttupstroke)))^2);
+
+        [lineXcorrFit,~] = polyfit(distance,xcorr,1);
+        PWV_Xcorr(numCompares+1) = 1/lineXcorrFit(1);
+        PWV_Xcorr(numCompares+2) = lineXcorrFit(1);
+        PWV_Xcorr(numCompares+3) = lineXcorrFit(2);
+        PWV_Xcorr(numCompares+4) = (1 - (S.normr/norm(xcorr - mean(xcorr)))^2);
+
+        [lineAverageFit,~] = polyfit(distance,ttaverage,1);
+        PWV_Average(numCompares+1) = 1/lineAverageFit(1);
+        PWV_Average(numCompares+2) = lineAverageFit(1);
+        PWV_Average(numCompares+3) = lineAverageFit(2);
+        PWV_Average(numCompares+4) = (1 - (S.normr/norm(ttaverage - mean(ttaverage)))^2);
+        PWV_Average = PWV_Average';
+
+        Distances(numCompares+1:numCompares+4) = NaN;
+        TTPoint(numCompares+1:numCompares+4) = NaN;
+        TTFoot(numCompares+1:numCompares+4) = NaN;
+        TTUpstroke(numCompares+1:numCompares+4) = NaN;
+        Xcorr(numCompares+1:numCompares+4) = NaN;
+        TTaverage(numCompares+1:numCompares+4) = NaN;
+
+        PLANES = PLANES'; %Needed for excel, won't save name if ' in table call
+        Distances = Distances';
+        TTPoint = TTPoint';
+        TTFoot = TTFoot';
+        TTUpstroke = TTUpstroke';
+        Xcorr = Xcorr';
+        TTaverage = TTaverage';
+
+        % Make table for writing excel file
+        pwvTable = table(PLANES,Distances,TTPoint,TTFoot,TTUpstroke,Xcorr,TTaverage,PWV_Point,PWV_Foot,PWV_Upstroke,PWV_Xcorr,PWV_Average);
+        baseDir = globals.homeDir; %rejoin string to get name of folder one up from plane data
+        dataDir = ['DataAnalysis_' globals.dataType];
+
+        set(handles.exportDone,'String',['Saving Dataset ' num2str(a) ' ...']);
+        if ~exist([baseDir filesep dataDir],'dir') %if directory doesn't exist
+            mkdir([baseDir filesep dataDir]); %make it
+        end 
+        cd([baseDir filesep dataDir]); %go to it
+        mkdir(globals.analysisType);
+        cd(globals.analysisType);
+        writetable(pwvTable,['Summary_' chopDate '.xlsx'],'FileType','spreadsheet'); %write excel sheet for each interp
+        %if strcmp(globals.interpType,'Gaussian')
+            saveTTplots(handles,flow);
+        %end 
+        %if ~exist('flow.mat','file')
+            save('flow.mat','flow')
+            save('pwvTable.mat','pwvTable');
+            save('globals.mat','globals');
+        %end 
+        cd(globals.homeDir); %go back home  
+        clear PLANES %need to do this because PLANES will keep getting transposed
+
+        cd([baseDir filesep dataDir]); %go to it
+        frame = getframe(handles.TimeVsDistance); %get snapshot of PWV plot 
+        imwrite(frame2im(frame),'PWVanalysisPlot.png'); %write out to PNG
+        pcDatasets = handles.pcDatasets;
+        save('pcDatasets.mat','pcDatasets');
+        cd(globals.homeDir); %go back home  
+        if ~exist('PWV_2DPC_Analysis-v2','dir')
+            mkdir('PWV_2DPC_Analysis-v2');
+        end 
+        movefile(dataDir,'PWV_2DPC_Analysis-v2');
+        globals.analysisType = 'Relative_Time';
+        guidata(hObject, handles);
     end 
-    PLANES{numCompares} = [flow(1).Name ' --> ' flow(end).Name]; %get names for Excel
-    PLANES{numCompares+1} = 'FIT_PWV'; %These rows be for PWV fit parameters
-    PLANES{numCompares+2} = 'm (slope)';
-    PLANES{numCompares+3} = 'b (y-intercept)';
-    PLANES{numCompares+4} = 'R^2';
-
-    PWV_Point = NaN(numCompares+4,1); %add dummy rows to match PLANES size
-    PWV_Foot = NaN(numCompares+4,1);
-    PWV_Upstroke = NaN(numCompares+4,1);
-    PWV_Xcorr = NaN(numCompares+4,1);
-    PWV_Average = zeros(1,numCompares);
-
-    for i=1:numCompares
-        PWV_Point(i) = Distances(i)/TTPoint(i); %calculate pointwise PWVs (not fits)
-        PWV_Foot(i) = Distances(i)/TTFoot(i);
-        PWV_Upstroke(i) = Distances(i)/TTUpstroke(i);
-        PWV_Xcorr(i) = Distances(i)/Xcorr(i);
-        PWV_Average(i) = (PWV_Point(i)+PWV_Foot(i)+PWV_Upstroke(i)+PWV_Xcorr(i))/4; %get simple average of all PWVs
-    end 
-
-    [linePointFit,S] = polyfit(distance,ttpoint,1); %get linear regression fit for all points 
-    PWV_Point(numCompares+1) = 1/linePointFit(1); %calculate PWV (=1/slope)
-    PWV_Point(numCompares+2) = linePointFit(1); %get slope
-    PWV_Point(numCompares+3) = linePointFit(2); %get y-intercept
-    PWV_Point(numCompares+4) = (1 - (S.normr/norm(ttpoint - mean(ttpoint)))^2); %R^2
-
-    [lineFootFit,S] = polyfit(distance,ttfoot,1);
-    PWV_Foot(numCompares+1) = 1/lineFootFit(1);
-    PWV_Foot(numCompares+2) = lineFootFit(1);
-    PWV_Foot(numCompares+3) = lineFootFit(2);
-    PWV_Foot(numCompares+4) = (1 - (S.normr/norm(ttfoot - mean(ttfoot)))^2);
-
-    [lineUpstrokeFit,~] = polyfit(distance,ttupstroke,1);
-    PWV_Upstroke(numCompares+1) = 1/lineUpstrokeFit(1);
-    PWV_Upstroke(numCompares+2) = lineUpstrokeFit(1);
-    PWV_Upstroke(numCompares+3) = lineUpstrokeFit(2);
-    PWV_Upstroke(numCompares+4) = (1 - (S.normr/norm(ttupstroke - mean(ttupstroke)))^2);
-
-    [lineXcorrFit,~] = polyfit(distance,xcorr,1);
-    PWV_Xcorr(numCompares+1) = 1/lineXcorrFit(1);
-    PWV_Xcorr(numCompares+2) = lineXcorrFit(1);
-    PWV_Xcorr(numCompares+3) = lineXcorrFit(2);
-    PWV_Xcorr(numCompares+4) = (1 - (S.normr/norm(xcorr - mean(xcorr)))^2);
-
-    [lineAverageFit,~] = polyfit(distance,ttaverage,1);
-    PWV_Average(numCompares+1) = 1/lineAverageFit(1);
-    PWV_Average(numCompares+2) = lineAverageFit(1);
-    PWV_Average(numCompares+3) = lineAverageFit(2);
-    PWV_Average(numCompares+4) = (1 - (S.normr/norm(ttaverage - mean(ttaverage)))^2);
-    PWV_Average = PWV_Average';
-
-    Distances(numCompares+1:numCompares+4) = NaN;
-    TTPoint(numCompares+1:numCompares+4) = NaN;
-    TTFoot(numCompares+1:numCompares+4) = NaN;
-    TTUpstroke(numCompares+1:numCompares+4) = NaN;
-    Xcorr(numCompares+1:numCompares+4) = NaN;
-    TTaverage(numCompares+1:numCompares+4) = NaN;
-
-    PLANES = PLANES'; %Needed for excel, won't save name if ' in table call
-    Distances = Distances';
-    TTPoint = TTPoint';
-    TTFoot = TTFoot';
-    TTUpstroke = TTUpstroke';
-    Xcorr = Xcorr';
-    TTaverage = TTaverage';
-
-    % Make table for writing excel file
-    pwvTable = table(PLANES,Distances,TTPoint,TTFoot,TTUpstroke,Xcorr,TTaverage,PWV_Point,PWV_Foot,PWV_Upstroke,PWV_Xcorr,PWV_Average);
-    baseDir = globals.homeDir; %rejoin string to get name of folder one up from plane data
-    dataDir = ['DataAnalysis_' globals.dataType];
-
-    if ~exist([baseDir filesep dataDir],'dir') %if directory doesn't exist
-        mkdir([baseDir filesep dataDir]); %make it
-    end 
-    cd([baseDir filesep dataDir]); %go to it
-    writetable(pwvTable,['Summary_' chopDate '.xlsx'],'FileType','spreadsheet'); %write excel sheet for each interp
-    %if strcmp(globals.interpType,'Gaussian')
-        saveTTplots(handles,flow);
-    %end 
-    %if ~exist('flow.mat','file')
-        save('flow.mat','flow')
-        save('pwvTable.mat','pwvTable');
-        save('globals.mat','globals');
-    %end 
-    cd(globals.homeDir); %go back home  
-    clear PLANES %need to do this because PLANES will keep getting transposed
-    
-    cd([baseDir filesep dataDir]); %go to it
-    frame = getframe(handles.TimeVsDistance); %get snapshot of PWV plot 
-    imwrite(frame2im(frame),'PWVanalysisPlot.png'); %write out to PNG
-    pcDatasets = handles.pcDatasets;
-    save('pcDatasets.mat','pcDatasets');
-    cd(globals.homeDir); %go back home  
-    if ~exist('PWV_2DPC_Analysis','dir')
-        mkdir('PWV_2DPC_Analysis');
-    end 
-    movefile(dataDir,'PWV_2DPC_Analysis');
-    movefile(['ROIimages_' handles.global.dataType],'PWV_2DPC_Analysis');
+    movefile(['ROIimages_' handles.global.dataType],'PWV_2DPC_Analysis-v2');
     set(handles.exportDone,'String','Export Completed!');
 
     guidata(hObject, handles);
@@ -1011,8 +1016,14 @@ function flow = computeTTs(flow,globals)
         if mean(flowTemp)<0 %if our flow curve is mainly negative
             flowTemp = -1*flowTemp; %flip it upside down so we can find time shifts
         end 
-       
-        times = flow(i).Interp.times; %get time frames (ms)
+        
+        if strcmp(globals.analysisType,'Absolute_Time')
+            times = flow(i).Interp.times; %get individual time frames (ms)
+        elseif strcmp(globals.analysisType,'Relative_Time')
+            times = flow(1).Interp.times; %use only 1st time frames (ms)
+        else
+            disp('Please select correct data analysis type (Absolute_Time or Relative_Time)');
+        end 
         timeres = times(2)-times(1); %temporal resolution (ms)
         curvePoints(i).times = times;
         curvePoints(i).timeres = timeres;
