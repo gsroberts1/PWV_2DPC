@@ -72,7 +72,8 @@ function PWV_2DPC_OpeningFcn(hObject, eventdata, handles, varargin)
     handles.global.pgShift = 0;
     handles.global.pcIter = 1;
     handles.global.analysisType = 'Absolute_Time'; % (or 'Relative_Tme') use timestamps for each acq separately
-
+    %handles.global.analysisType = 'Relative_Time';
+    
     set(handles.load2DPCbutton,'Enable','off');
     set(handles.pcPlanePopup,'Enable','off');
     set(handles.pcDatasetPopup,'Enable','off');
@@ -219,6 +220,11 @@ function load2DPCbutton_Callback(hObject, eventdata, handles)
         MAG = mean(mag,3); %Average magnitude
         CD = mean(cd,3); %Average complex difference
         VMEAN = mean(v,3); %Average velocity
+%         aliasBIN = (v > 1000);
+%         nonaliased = ~aliasBIN.*v;
+%         aliased = aliasBIN.*v;
+%         fixed = (aliased - 3000).*aliasBIN;
+%         v = fixed + nonaliased;
         
         handles.pcDatasets(pcIter).Images.MAG = flipud(MAG);
         handles.pcDatasets(pcIter).Images.CD = flipud(CD);
@@ -366,6 +372,15 @@ function loadROIbutton_Callback(hObject, eventdata, handles)
         flow_roi(i) = area.*mean_roi(i).*0.001; %flow in frame i (mm^3/s*0.001 = mL/s)
     end 
     times = double(timeres.*(0:(frames-1))); %original times
+    
+    % Unrap Code (use in for loop above as needed)
+%     newPlane = vTemp.*mask;
+%     newPlane = (newPlane/1500)*pi;
+%     UW = Unwrap_TIE_DCT_Iter(newPlane);
+%     UW = (UW/pi)*-1500;
+%     figure; imshowpair(newPlane,UW,'montage');
+%     plane = vTemp.*(~mask);
+%     vTemp = -plane - UW;
     
     %%% Add ROI info and raw (uninterpolated) data to Raw structure
     Raw.radius = radius; 
@@ -760,7 +775,7 @@ function exportAnalysisButton_Callback(hObject, eventdata, handles)
     globals = handles.global;
     
     for a=1:2
-        flow = computeTTs(handles.flow,handles.global); %recalculate flow struct for each interp
+        flow = computeTTs(handles.flow,globals); %recalculate flow struct for each interp
         numCompares = numel(flow);
         handles.flow = flow;
         guidata(hObject, handles);
@@ -885,6 +900,7 @@ function exportAnalysisButton_Callback(hObject, eventdata, handles)
             mkdir('PWV_2DPC_Analysis-v2');
         end 
         movefile(dataDir,'PWV_2DPC_Analysis-v2');
+        handles.globals.analysisType = 'Relative_Time';
         globals.analysisType = 'Relative_Time';
         guidata(hObject, handles);
     end 
@@ -1021,6 +1037,10 @@ function flow = computeTTs(flow,globals)
             times = flow(i).Interp.times; %get individual time frames (ms)
         elseif strcmp(globals.analysisType,'Relative_Time')
             times = flow(1).Interp.times; %use only 1st time frames (ms)
+            flow(i).Raw.times = flow(1).Raw.times;
+            flow(i).Interp.times = flow(1).Interp.times;
+            flow(i).Gaussian.times = flow(1).Gaussian.times;
+            flow(i).Shifted.times = flow(1).Shifted.times;
         else
             disp('Please select correct data analysis type (Absolute_Time or Relative_Time)');
         end 
@@ -1163,15 +1183,27 @@ function plotVelocity(handles)
                 switch handles.global.interpType %check what interpolation we are using
                     case 'None'
                         velocity = handles.pcDatasets(i).Interp(j).mean_v; %grab mean velocity
-                        times = handles.pcDatasets(i).Interp(j).times;
+                        if strcmp(handles.global.analysisType,'Absolute_Time')
+                            times = handles.pcDatasets(i).Interp(j).times;
+                        else
+                            times = handles.pcDatasets(1).Interp(1).times;
+                        end 
                         stdv = handles.pcDatasets(i).Interp(j).stdv_v; %grab stdv of velocity
                     case 'Gaussian'
                         velocity = handles.pcDatasets(i).Gaussian(j).mean_v;
-                        times = handles.pcDatasets(i).Gaussian(j).times;
+                        if strcmp(handles.global.analysisType,'Absolute_Time')
+                            times = handles.pcDatasets(i).Gaussian(j).times;
+                        else
+                            times = handles.pcDatasets(1).Gaussian(1).times;
+                        end 
                         stdv = handles.pcDatasets(i).Gaussian(j).stdv_v;
                     case 'Shifted'
                         velocity = handles.pcDatasets(i).Shifted(j).mean_v;
-                        times = handles.pcDatasets(i).Shifted(j).times;
+                        if strcmp(handles.global.analysisType,'Absolute_Time')
+                            times = handles.pcDatasets(i).Shifted(j).times;
+                        else
+                            times = handles.pcDatasets(1).Shifted(1).times;
+                        end 
                         stdv = handles.pcDatasets(i).Shifted(j).stdv_v;
                 end 
 
@@ -1270,40 +1302,36 @@ function flow = organizeFlowInfo(handles)
 
 % --- Save Time-To Plots for record-keeping and debugging
  function saveTTplots(handles,flow)   
-    times = handles.pcDatasets(1).Interp(1).times;
+    times = flow(1).Interp.times;
     figure('units','normalized','outerposition',[0 0 1 1]); 
     % Note that above we assume same time scale for each plane (MR scan)
     xlim([min(times) max(times)]);
     legendSet = {}; %add baseline to legend names
     count = 1;
-    for i=1:numel(handles.pcDatasets) %for all planes
-        if isstruct(handles.pcDatasets(i).Interp) %if we've made ROI data for this dataset
-            for j=1:length(handles.pcDatasets(i).Interp) %for each ROI
-                legendSet{end+1} = handles.pcDatasets(i).Raw(j).name; %add name of ROI to list
-                switch handles.global.interpType %check what interpolation we are using
-                    case 'None'
-                        vTemp = handles.pcDatasets(i).Interp(j).mean_v; %grab mean velocity
-                        timeTemp = handles.pcDatasets(i).Interp(j).times;
-                    case 'Gaussian'
-                        vTemp = handles.pcDatasets(i).Gaussian(j).mean_v;
-                        timeTemp = handles.pcDatasets(i).Gaussian(j).times;
-                    case 'Shifted'
-                        vTemp = handles.pcDatasets(i).Shifted(j).mean_v;
-                        timeTemp = handles.pcDatasets(i).Shifted(j).times;
-                end 
-
-                if mean(vTemp)<0
-                    vTemp = -1*vTemp;
-                end
-                vTemp = normalize(vTemp,'range');
-
-                hold on; plot(timeTemp,vTemp);
-                velocity(count,:) = vTemp;
-                times(count,:) = timeTemp;
-                count = count+1;
-            end 
+    for i=1:numel(flow) %for all planes
+        switch handles.global.interpType %check what interpolation we are using
+            case 'None'
+                vTemp = flow(i).Interp.mean_v; %grab mean velocity
+                timeTemp = flow(i).Interp.times;
+            case 'Gaussian'
+                vTemp = flow(i).Gaussian.mean_v; %grab mean velocity
+                timeTemp = flow(i).Gaussian.times;
+            case 'Shifted'
+                vTemp = flow(i).Shifted.mean_v; %grab mean velocity
+                timeTemp = flow(i).Shifted.times;
         end 
+
+        if mean(vTemp)<0
+            vTemp = -1*vTemp;
+        end
+        vTemp = normalize(vTemp,'range');
+
+        hold on; plot(timeTemp,vTemp);
+        velocity(count,:) = vTemp;
+        times(count,:) = timeTemp;
+        count = count+1;
     end 
+    wtime = 3;
     legend(legendSet,'Location','northeastoutside','AutoUpdate','off');
     xlabel('Time (ms)'); 
     ylim([0 1.05]);
@@ -1320,7 +1348,7 @@ function flow = organizeFlowInfo(handles)
     title('Time-To-Point');
     frame = getframe(gcf);
     imwrite(frame2im(frame),[pwd filesep 'TTPoint.png']);
-    
+    pause(wtime)
     set(h,'Visible','off'); set(h2,'Visible','off'); set(h3,'Visible','off')
     
     ttf = [flow.TTFoot];
@@ -1336,7 +1364,8 @@ function flow = organizeFlowInfo(handles)
     title('Time-To-Foot');
     frame = getframe(gcf);
     imwrite(frame2im(frame),[pwd filesep 'TTFoot.png']);
-    
+    pause(wtime)
+
     set(h,'Visible','off'); set(h2,'Visible','off');
         
     ttu = [flow.TTUpstroke];
@@ -1356,7 +1385,7 @@ function flow = organizeFlowInfo(handles)
     title('Time-To-Upstroke');
     frame = getframe(gcf);
     imwrite(frame2im(frame),[pwd filesep 'TTUpstroke.png']);
-    
+    pause(wtime)
     set(h,'Visible','off'); set(h2,'Visible','off'); set(h3,'Visible','off'); set(h4,'Visible','off');
     
     xcorr = [flow.Xcorr];
@@ -1369,7 +1398,7 @@ function flow = organizeFlowInfo(handles)
     title('Cross Correlation Time Lag');
     frame = getframe(gcf);
     imwrite(frame2im(frame),[pwd filesep 'Xcorr.png']);
-    
+    pause(wtime)
     set(h,'Visible','off'); set(h2,'Visible','off'); set(h3,'Visible','off')
     
     hold off; close(gcf);   

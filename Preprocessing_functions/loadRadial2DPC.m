@@ -14,19 +14,23 @@ temporalRes = pcviprHeader.timeres;
 
 MAG = load_dat(fullfile(directory,'MAG.dat'),[resx resy]);
 CD = load_dat(fullfile(directory,'CD.dat'),[resx resy]);
-VMEAN = load_dat(fullfile(directory,'comp_vd_3.dat'),[resx resy]);
+VX = load_dat(fullfile(directory,'comp_vd_1.dat'),[resx resy]);
+VY = load_dat(fullfile(directory,'comp_vd_2.dat'),[resx resy]);
+VZ = load_dat(fullfile(directory,'comp_vd_3.dat'),[resx resy]);
 
 vz  = zeros(resx,resy,nframes);
 mag = zeros(resx,resy,nframes);
 cd  = zeros(resx,resy,nframes);
 for j = 1:nframes   
+    vx(:,:,j) = load_dat(fullfile(directory, ['\ph_' num2str(j-1,'%03i') '_vd_1.dat']),[resx resy]);
+    vy(:,:,j) = load_dat(fullfile(directory, ['\ph_' num2str(j-1,'%03i') '_vd_2.dat']),[resx resy]);
     vz(:,:,j) = load_dat(fullfile(directory, ['\ph_' num2str(j-1,'%03i') '_vd_3.dat']),[resx resy]);
     mag(:,:,j) = load_dat(fullfile(directory, ['\ph_' num2str(j-1,'%03i') '_mag.dat']),[resx resy]);
     cd(:,:,j) = load_dat(fullfile(directory, ['\ph_' num2str(j-1,'%03i') '_cd.dat']),[resx resy]);
 end
 MAG = flipud(MAG);
 CD = flipud(CD);
-VMEAN = flipud(VMEAN);
+VMEAN = flipud(VZ);
 mag = flipud(mag);
 cd = flipud(cd);
 vz = flipud(squeeze(vz));
