@@ -412,11 +412,11 @@ function loadROIbutton_Callback(hObject, eventdata, handles)
 
     %%% Create Interpolated Curve with Gaussian Smoothing   
     if frames<=40
-        smf = 70; %smooth factor (window)
+        smf = 75; %smooth factor (window)
     elseif frames<=80
-        smf = 90;
+        smf = 100;
     else
-        smf = 110;
+        smf = 125;
     end 
     mean_gaus = smoothdata(mean_interp,'gaussian',smf);
     stdv_gaus = smoothdata(stdv_interp,'gaussian',smf);
