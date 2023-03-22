@@ -72,6 +72,7 @@ function PWV_2DPC_OpeningFcn(hObject, eventdata, handles, varargin)
     handles.global.pgShift = 0;
     handles.global.pcIter = 1;
     handles.global.analysisType = 'Absolute_Time'; % (or 'Relative_Tme') use timestamps for each acq separately
+    handles.global.minTime = NaN;
     %handles.global.analysisType = 'Relative_Time';
     
     set(handles.load2DPCbutton,'Enable','off');
@@ -400,6 +401,16 @@ function loadROIbutton_Callback(hObject, eventdata, handles)
     sample_density = 1000;
     tq = linspace(0,frames-1,sample_density); %interpolate time dimension
     times_interp = double(timeres.*tq); %interpolated times
+    
+    %set temporal resolution to 1ms, chop ends of waveforms
+%     times_interp = double(0:1:timeres*(frames-1)); %interpolate to 1ms
+%     if isnan(handles.global.minTime)
+%         handles.global.minTime = int16(length(times_interp) - 0.05*length(times_interp));
+%         times_interp = times_interp(1:handles.global.minTime);
+%     else
+%         times_interp = times_interp(1:handles.global.minTime);
+%     end 
+
     mean_interp = interp1(times,mean_roi,times_interp,'linear');
     stdv_interp = interp1(times,stdv_roi,times_interp,'linear');
     flow_interp = interp1(times,flow_roi,times_interp,'linear');
@@ -1331,7 +1342,7 @@ function flow = organizeFlowInfo(handles)
         times(count,:) = timeTemp;
         count = count+1;
     end 
-    wtime = 3;
+    wtime = 1.5;
     legend(legendSet,'Location','northeastoutside','AutoUpdate','off');
     xlabel('Time (ms)'); 
     ylim([0 1.05]);
