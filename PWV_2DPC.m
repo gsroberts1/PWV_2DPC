@@ -22,7 +22,7 @@ function varargout = PWV_2DPC(varargin)
 
     % Edit the above text to modify the response to help PWV_2DPC
 
-    % Last Modified by GUIDE v2.5 03-Jun-2021 15:17:10
+    % Last Modified by GUIDE v2.5 15-Nov-2022 10:16:55
     % Developed by Grant S Roberts, University of Wisconsin-Madison, 2019
     
     
@@ -61,26 +61,30 @@ function PWV_2DPC_OpeningFcn(hObject, eventdata, handles, varargin)
 
     % Get anatomical, pc, and bSSFP data from LoadPWV GUI
     handles.pcDatasets(1).ROI = []; %initialize ROI field
-    handles.pcDatasets(1).ROIdataUninterp = []; %throgh-plane flow curve data
-    handles.pcDatasets(1).ROIdataGaussian = []; %flow smoothed with Gauss.
+    handles.pcDatasets(1).Interp = []; %throgh-plane flow curve data
+    handles.pcDatasets(1).Gaussian = []; %flow smoothed with Gauss.
+    handles.pcDatasets(1).Shifted = [];
     
     handles.global.dataType = 'Cartesian';
-    handles.global.interpType = 'Gaussian'; %interpolation type (i.e. Gaussian)
+    handles.global.interpType = 'None'; %interpolation type (i.e. Gaussian)
     handles.global.startAnalyzing = 0; %flag to begin PWV calculations
     handles.global.totalROIs = 0;
     handles.global.pgShift = 0;
     handles.global.pcIter = 1;
-
+    handles.global.analysisType = 'Absolute_Time'; % (or 'Relative_Tme') use timestamps for each acq separately
+    handles.global.minTime = NaN;
+    %handles.global.analysisType = 'Relative_Time';
+    
     set(handles.load2DPCbutton,'Enable','off');
     set(handles.pcPlanePopup,'Enable','off');
     set(handles.pcDatasetPopup,'Enable','off');
     set(handles.drawROIbutton,'Enable','off');
     set(handles.loadROIbutton,'Enable','off');
     set(handles.pcSlider,'Enable','off');
-    set(handles.interpolatePopup,'String',{'Gaussian','None'}); %set all possible interpolation types
+    set(handles.interpolatePopup,'String',{'None','Gaussian','Shifted'}); %set all possible interpolation types
     set(handles.interpolatePopup,'Enable','off'); %initialize radios and buttons
     set(handles.errorBarRadio,'Enable','off');
-    set(handles.pgShiftRadio,'Enable','off');
+    set(handles.pgShift,'Enable','off');
     set(handles.ttpointRadio,'Value',1); 
     set(handles.ttpointRadio,'Enable','off');
     set(handles.ttuRadio,'Value',1);
@@ -122,11 +126,12 @@ function loadCLpush_Callback(hObject, eventdata, handles)
     
 % --- LOAD 2DPC DATASETS - CALLBACK
 function load2DPCbutton_Callback(hObject, eventdata, handles)
-    [pcFile, pcDir] = uigetfile({'*.dcm;*.dat;*.mat','Useable Files (*.dcm,*.dat,*.mat)';
+    [pcFile, pcDir] = uigetfile({'*.dcm;*.dat;*.mat;*.h5','Useable Files (*.dcm,*.dat,*.mat,*.h5)';
        '*.dcm',  'DICOM files (*.dcm)'; ...
        '*.dat',  'DAT-files (*.dat)'; ...
-       '*.mat','MAT-files (*.mat)'; ...
-       '*.*',  'All Files (*.*)'}, 'Select ONE 2DPC file in the dataset');
+       '*.mat',  'MAT-files (*.mat)'; ...
+       '*.h5',   'HDF5-files (*.h5)'; ...
+       '*.*',    'All Files (*.*)'}, 'Select ONE 2DPC file in the dataset');
     pcIter = handles.global.pcIter;
     [~,~,extension] = fileparts(pcFile);
     dirInfo = dir(fullfile(pcDir,['*' extension]));
@@ -138,8 +143,8 @@ function load2DPCbutton_Callback(hObject, eventdata, handles)
         end  
         mag = hold(:,:,floor(length(dirInfo)/2)+1:end); %magnitude is last half
         v = hold(:,:,1:floor(length(dirInfo)/2)); %velocity is first half of images
-        mag = circshift(mag,10,3);
-        v = circshift(v,10,3);
+        %mag = circshift(mag,10,3); %account for PG gating
+        %v = circshift(v,10,3);
         MAG = mean(mag,3); %time-averaged magnitude
         VMEAN = mean(v,3); %time-averaged velocity
         CD = MAG.*sin( pi/2*abs(VMEAN)/max(VMEAN(:)) );
@@ -183,6 +188,44 @@ function load2DPCbutton_Callback(hObject, eventdata, handles)
             cd(:,:,j) = load_dat(fullfile(pcDir,[filesep 'ph_' num2str(j-1,'%03i') '_cd.dat']),[resx resy]);
             v(:,:,j) = load_dat(fullfile(pcDir,[filesep 'ph_' num2str(j-1,'%03i') '_vd_3.dat']),[resx resy]);
         end
+        
+        if resy==640
+            MAG = MAG(:,161:480);
+            CD = CD(:,161:480);
+            VMEAN = VMEAN(:,161:480);
+            mag = mag(:,161:480,:);
+            cd = cd(:,161:480,:);
+            v = v(:,161:480,:);
+        end 
+        handles.pcDatasets(pcIter).Images.MAG = flipud(MAG);
+        handles.pcDatasets(pcIter).Images.CD = flipud(CD);
+        handles.pcDatasets(pcIter).Images.V = flipud(VMEAN);
+        handles.pcDatasets(pcIter).Images.mag = flipud(mag);
+        handles.pcDatasets(pcIter).Images.cd = flipud(cd);
+        handles.pcDatasets(pcIter).Images.v = flipud(v); 
+        handles.pcDatasets(pcIter).Names = ['Plane' num2str(pcIter)];
+    elseif isequal(extension,'.h5')
+        fid = fopen([pcDir filesep 'pcvipr_header.txt'], 'r'); %open header
+        dataArray = textscan(fid,'%s%s%[^\n\r]','Delimiter',' ', ...
+            'MultipleDelimsAsOne',true,'ReturnOnError',false); %parse header info
+        fclose(fid);
+        dataArray{1,2} = cellfun(@str2num,dataArray{1,2}(:),'UniformOutput',false);
+        pcviprHeader = cell2struct(dataArray{1,2}(:),dataArray{1,1}(:),1); %turn to structure
+        handles.pcDatasets(pcIter).Info = pcviprHeader; %add pcvipr header to handles
+        handles.global.dataType = 'Radial_SMS';
+
+        % Initialize data time-resolved data arrays
+        mag = h5read(fullfile(pcDir,pcFile),'/MAG'); %Time-resolved magnitude
+        cd = h5read(fullfile(pcDir,pcFile),'/CD'); %Time-resolved complex difference
+        v = h5read(fullfile(pcDir,pcFile),'/VZ'); %Time-resolved velocity 
+        MAG = mean(mag,3); %Average magnitude
+        CD = mean(cd,3); %Average complex difference
+        VMEAN = mean(v,3); %Average velocity
+%         aliasBIN = (v > 1000);
+%         nonaliased = ~aliasBIN.*v;
+%         aliased = aliasBIN.*v;
+%         fixed = (aliased - 3000).*aliasBIN;
+%         v = fixed + nonaliased;
         
         handles.pcDatasets(pcIter).Images.MAG = flipud(MAG);
         handles.pcDatasets(pcIter).Images.CD = flipud(CD);
@@ -305,87 +348,123 @@ function loadROIbutton_Callback(hObject, eventdata, handles)
     [X,Y] = ndgrid(1:size(v,1),1:size(v,2));
     X = X-center(2); %shift coordinate grid
     Y = Y-center(1);
-    roiMask = sqrt(X.^2 + Y.^2)<=radius; %anything outside radius is ignored
+    mask = sqrt(X.^2 + Y.^2)<=radius; %anything outside radius is ignored
 
-    %%% Create Linear Interpolated Data
+    %%% Create velocity/flow curves
     if isfield(handles.pcDatasets(planeNum).Info,'matrixx') %if radial data (pcvipr recon)
         matrixx = handles.pcDatasets(planeNum).Info.matrixx; %matrix size in x dimension
         fovx = handles.pcDatasets(planeNum).Info.fovx;  %field of view (mm)
         xres = fovx/matrixx; %resolution (mm). ASSUMED TO BE SAME IN Y DIMENSION
         frames = handles.pcDatasets(planeNum).Info.frames;
         timeres = handles.pcDatasets(planeNum).Info.timeres; %temporal resolution (ms)
-%         frames = handles.pcDatasets(1).Info.frames;
-%         timeres = handles.pcDatasets(1).Info.timeres;
     else 
         xres = handles.pcDatasets(planeNum).Info.PixelSpacing(1); %resolution (mm) ASSUMED SAME IN Y DIM
-        rrInterval = handles.pcDatasets(planeNum).Info.NominalInterval; %average RR interval (ms)
+        rr_interval = handles.pcDatasets(planeNum).Info.NominalInterval; %average RR interval (ms)
         frames = handles.pcDatasets(planeNum).Info.CardiacNumberOfImages; %number of cardiac frames
-        timeres = rrInterval/frames; %temporal resolution (ms)
-%         rrInterval = handles.pcDatasets(1).Info.NominalInterval; %avg RR int. (ms) TAKE FIRST TO MATCH TEMP RES
-%         frames = handles.pcDatasets(planeNum).Info.CardiacNumberOfImages; %number of cardiac frames
-%         timeres = rrInterval/frames; %temporal resolution (ms)
+        timeres = rr_interval/frames; %temporal resolution (ms)
     end 
-
-    area = sum(roiMask(:))*(xres)^2; %ROI area (mm^2)
+    
+    area = sum(mask(:))*(xres)^2; %ROI area (mm^2)
     for i=1:frames
         vTemp = v(:,:,i); %through-plane velocity in frame i
-        roiDataRaw(:,i) = double(vTemp(roiMask)); %indexed velocities within mask
-        meanROI(i) = mean(roiDataRaw(:,i)); %mean velocity in frame i (mm/s)
-        stdvROI(i) = std(double(vTemp(roiMask))); %stdv of velocity in frame i (mm/s)
-        flowROI(i) = area.*meanROI(i).*0.001; %flow in frame i (mm^3/s*0.001 = mL/s)
+        roi_data_raw(:,i) = double(vTemp(mask)); %indexed velocities within mask
+        mean_roi(i) = mean(roi_data_raw(:,i)); %mean velocity in frame i (mm/s)
+        stdv_roi(i) = std(double(vTemp(mask))); %stdv of velocity in frame i (mm/s)
+        flow_roi(i) = area.*mean_roi(i).*0.001; %flow in frame i (mm^3/s*0.001 = mL/s)
     end 
-
     times = double(timeres.*(0:(frames-1))); %original times
-%    tq = 0:0.05:frames-1; %interpolate time dimension
-%    timesInterp = double(timeres.*tq); %interpolated times
-    sampleDensity = 1000;
-    tq = linspace(0,frames-1,sampleDensity); %interpolate time dimension
-    timesInterp = double(timeres.*tq); %interpolated times
-
-    %Linear interpolation (to get more points on flow curve)
-    meanROIfit = interp1(times,meanROI,timesInterp,'linear');
-    stdvROIfit = interp1(times,stdvROI,timesInterp,'linear');
-    flowROIfit = interp1(times,flowROI,timesInterp,'linear');
-
-    %Add data to roiStatistics structure
-    roiInfo.radius = radius; 
-    roiInfo.center = center;
-    roiInfo.roiMask = roiMask; 
-    roiInfo.roiDataRaw = roiDataRaw;
-    roiInfo.Name = ''; %will get changed below
-    roiInfo.ROInumber = handles.global.totalROIs;
     
-    roiStatisticsUninterp.times = timesInterp;
-    roiStatisticsUninterp.meanROI = meanROIfit; 
-    roiStatisticsUninterp.stdvROI = stdvROIfit;
-    roiStatisticsUninterp.flowROI = flowROIfit; 
+    % Unrap Code (use in for loop above as needed)
+%     newPlane = vTemp.*mask;
+%     newPlane = (newPlane/1500)*pi;
+%     UW = Unwrap_TIE_DCT_Iter(newPlane);
+%     UW = (UW/pi)*-1500;
+%     figure; imshowpair(newPlane,UW,'montage');
+%     plane = vTemp.*(~mask);
+%     vTemp = -plane - UW;
+    
+    %%% Add ROI info and raw (uninterpolated) data to Raw structure
+    Raw.radius = radius; 
+    Raw.center = center;
+    Raw.mask = mask; 
+    Raw.raw_data = roi_data_raw;
+    Raw.name = ''; %will get changed below
+    Raw.roi_number = handles.global.totalROIs;
+    Raw.times = times;
+    Raw.frames = frames;
+    Raw.timeres = timeres;
+    Raw.mean_v = mean_roi;
+    Raw.stdv_v = stdv_roi;
+    Raw.flow = flow_roi;  
+
+    %%% Linear interpolation (to get more points on flow curve)
+    sample_density = 1000;
+    tq = linspace(0,frames-1,sample_density); %interpolate time dimension
+    times_interp = double(timeres.*tq); %interpolated times
+    
+    %set temporal resolution to 1ms, chop ends of waveforms
+%     times_interp = double(0:1:timeres*(frames-1)); %interpolate to 1ms
+%     if isnan(handles.global.minTime)
+%         handles.global.minTime = int16(length(times_interp) - 0.05*length(times_interp));
+%         times_interp = times_interp(1:handles.global.minTime);
+%     else
+%         times_interp = times_interp(1:handles.global.minTime);
+%     end 
+
+    mean_interp = interp1(times,mean_roi,times_interp,'linear');
+    stdv_interp = interp1(times,stdv_roi,times_interp,'linear');
+    flow_interp = interp1(times,flow_roi,times_interp,'linear');
+    
+    Interp.times = times_interp;
+    Interp.sample_density = sample_density;
+    Interp.mean_v = mean_interp; 
+    Interp.stdv_v = stdv_interp;
+    Interp.flow = flow_interp; 
 
     %%% Create Interpolated Curve with Gaussian Smoothing   
     if frames<=40
-        smf = 4; %smooth factor (window)
+        smf = 80; %smooth factor (window)
     elseif frames<=80
-        smf = 5;
+        smf = 100;
     else
-        smf = 6;
+        smf = 120;
     end 
-    meanROIfit = interp1(times,smoothdata(meanROI,'gaussian',smf),timesInterp,'cubic');
-    stdvROIfit = interp1(times,smoothdata(stdvROI,'gaussian',smf),timesInterp,'cubic');
-    flowROIfit = interp1(times,smoothdata(flowROI,'gaussian',smf),timesInterp,'cubic');
+    mean_gaus = smoothdata(mean_interp,'gaussian',smf);
+    stdv_gaus = smoothdata(stdv_interp,'gaussian',smf);
+    flow_gaus = smoothdata(flow_interp,'gaussian',smf);
 
-    roiStatisticsGaussian.times = timesInterp;
-    roiStatisticsGaussian.meanROI = meanROIfit; 
-    roiStatisticsGaussian.stdvROI = stdvROIfit; 
-    roiStatisticsGaussian.flowROI = flowROIfit; 
+    Gaussian.times = times_interp;
+    Gaussian.smf = smf;
+    Gaussian.mean_v = mean_gaus; 
+    Gaussian.stdv_v = stdv_gaus; 
+    Gaussian.flow = flow_gaus; 
+    
+    %%% Shift Raw Data for PPG gating (then interpolate, then smooth)
+    shift = round((handles.global.pgShift/100)*frames);  %turn % into # frames to shift on raw data
+    mean_roi = circshift(Raw.mean_v,shift);
+    stdv_roi = circshift(Raw.stdv_v,shift);
+    flow_roi = circshift(Raw.flow,shift);
+    mean_interp = interp1(times,mean_roi,times_interp,'linear');
+    stdv_interp = interp1(times,stdv_roi,times_interp,'linear');
+    flow_interp = interp1(times,flow_roi,times_interp,'linear');
+    
+    Shifted.times = times_interp;
+    Shifted.mean_v = smoothdata(mean_interp,'gaussian',smf);
+    Shifted.stdv_v = smoothdata(stdv_interp,'gaussian',smf);
+    Shifted.flow = smoothdata(flow_interp,'gaussian',smf);
+    
 
     %%% Save all data into handles
-    if isstruct(handles.pcDatasets(planeNum).ROIdataUninterp)
-        handles.pcDatasets(planeNum).ROIinfo(end+1) = roiInfo;
-        handles.pcDatasets(planeNum).ROIdataUninterp(end+1) = roiStatisticsUninterp;
-        handles.pcDatasets(planeNum).ROIdataGaussian(end+1) = roiStatisticsGaussian;
+    if isstruct(handles.pcDatasets(planeNum).Interp)
+        handles.pcDatasets(planeNum).Raw(end+1) = Raw;
+        handles.pcDatasets(planeNum).Interp(end+1) = Interp;
+        handles.pcDatasets(planeNum).Gaussian(end+1) = Gaussian;
+        handles.pcDatasets(planeNum).Shifted(end+1) = Shifted;
     else
-        handles.pcDatasets(planeNum).ROIinfo = roiInfo;
-        handles.pcDatasets(planeNum).ROIdataUninterp = roiStatisticsUninterp;
-        handles.pcDatasets(planeNum).ROIdataGaussian = roiStatisticsGaussian;
+        handles.pcDatasets(planeNum).Raw = Raw;
+        handles.pcDatasets(planeNum).Interp = Interp;
+        handles.pcDatasets(planeNum).Gaussian = Gaussian;
+        handles.pcDatasets(planeNum).Shifted = Shifted;
     end 
 
     dataDir = handles.global.homeDir; %directory in which plane data is located
@@ -408,14 +487,14 @@ function loadROIbutton_Callback(hObject, eventdata, handles)
     
     %%% Label each ROI w/ names (helpful because there may be 2 ROIs/plane)
     for i=1:numel(handles.pcDatasets)
-        if isstruct(handles.pcDatasets(i).ROIinfo) %if we've made ROI data for this dataset
-            if length(handles.pcDatasets(i).ROIinfo)==1
-                handles.pcDatasets(i).ROIinfo.Name = handles.pcDatasets(planeNum).Names; %name ROI
+        if isstruct(handles.pcDatasets(i).Raw) %if we've made ROI data for this dataset
+            if length(handles.pcDatasets(i).Raw)==1
+                handles.pcDatasets(i).Raw.name = handles.pcDatasets(planeNum).Names; %name ROI
             else
-                for j=1:length(handles.pcDatasets(i).ROIinfo)
+                for j=1:length(handles.pcDatasets(i).Raw)
                     name = handles.pcDatasets(i).Names; %get plane name
                     planeName = [name ' ROI ' num2str(j)]; %needed if more than one ROI/plane
-                    handles.pcDatasets(i).ROIinfo(j).Name = planeName; %name ROI
+                    handles.pcDatasets(i).Raw(j).name = planeName; %name ROI
                 end 
             end 
         end 
@@ -431,7 +510,6 @@ function loadROIbutton_Callback(hObject, eventdata, handles)
     set(handles.drawROIbutton,'Enable','on');
     set(handles.interpolatePopup,'Enable','on'); %set all possible interpolation types
     set(handles.errorBarRadio,'Enable','on');
-    set(handles.pgShiftRadio,'Enable','on');
 
     guidata(hObject,handles);
     updatePCImages(handles); %update images (to remove green ROI circle)
@@ -450,7 +528,7 @@ function pcSlider_CreateFcn(hObject, eventdata, handles)
     
     
 % --- MINIMUM CONTRAST VALUE BOX - CALLBACK  
-    function minContrastBox_Callback(hObject, eventdata, handles)
+function minContrastBox_Callback(hObject, eventdata, handles)
     updatePCImages(handles)
 
 % --- MINIMUM CONTRAST VALUE BOX - CREATE FUNCTION   
@@ -482,14 +560,18 @@ function interpolatePopup_Callback(hObject, eventdata, handles)
     interp = get(handles.interpolatePopup,'Value');
     switch interp
         case 1
-            handles.global.interpType = 'Gaussian'; %set global flag
+            handles.global.interpType = 'None'; %set global flag
+            set(handles.pgShift,'Enable','off');
         case 2
-            handles.global.interpType = 'None';
+            handles.global.interpType = 'Gaussian';
+            set(handles.pgShift,'Enable','off');
+        case 3 
+            handles.global.interpType = 'Shifted';
+            set(handles.pgShift,'Enable','on');
     end 
  
     guidata(hObject, handles);
     plotVelocity(handles) %replot our velocity with interpolated data
-    
     if handles.global.startAnalyzing %if we're already analyzing PWVs
         completeLoadingROI_Callback(hObject, eventdata, handles); %recompute PWVs with interpolated data
     end 
@@ -507,18 +589,50 @@ function errorBarRadio_Callback(hObject, eventdata, handles)
     
     
 % --- PG SHIFT RADIO - CALLBACK
-function pgShiftRadio_Callback(hObject, eventdata, handles)
-    if get(handles.pgShiftRadio,'Value')
-        handles.global.pgShift = 1;
-    else
-        handles.global.pgShift = 0;
+function pgShift_Callback(hObject, eventdata, handles)
+    pgShift = str2double(get(handles.pgShift,'String')); %percent shift
+    handles.global.pgShift = pgShift; 
+    
+    frames = handles.pcDatasets(1).Raw.frames;
+    shift = round((pgShift/100)*frames);  %turn % into # frames to shift on raw data
+    for i=1:numel(handles.pcDatasets) %for all planes
+        if isstruct(handles.pcDatasets(i).Raw) %if we've made ROI data for this dataset
+            for j=1:length(handles.pcDatasets(i).Raw) %for each ROI
+                roi = handles.pcDatasets(i).Raw(j);
+                shifted = handles.pcDatasets(i).Shifted(j);
+                times = roi.times;
+                times_interp = handles.pcDatasets(i).Interp(j).times;
+                smf = handles.pcDatasets(i).Gaussian(j).smf;
+
+                mean_roi = circshift(roi.mean_v,shift);
+                stdv_roi = circshift(roi.stdv_v,shift);
+                flow_roi = circshift(roi.flow,shift);
+                mean_interp = interp1(times,mean_roi,times_interp,'linear');
+                stdv_interp = interp1(times,stdv_roi,times_interp,'linear');
+                flow_interp = interp1(times,flow_roi,times_interp,'linear');
+                
+                shifted.mean_v = smoothdata(mean_interp,'gaussian',smf);
+                shifted.stdv_v = smoothdata(stdv_interp,'gaussian',smf);
+                shifted.flow = smoothdata(flow_interp,'gaussian',smf);
+
+                %%% Save all data into handles
+                handles.pcDatasets(i).Shifted(j) = shifted;
+            end
+        end
     end 
+    guidata(hObject, handles);
     
     plotVelocity(handles) %replot flow curves with half cycle shift
     if handles.global.startAnalyzing %if we're already analyzing PWVs
         completeLoadingROI_Callback(hObject, eventdata, handles); %recompute PWVs with shifted curves
     end 
     guidata(hObject, handles);
+    
+% --- PG SHIFT RADIO - CREATE FUNCTION
+function pgShift_CreateFcn(hObject, eventdata, handles)
+    if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
+        set(hObject,'BackgroundColor','white');
+    end
 
    
     
@@ -552,7 +666,7 @@ function completeLoadingROI_Callback(hObject, eventdata, handles)
     
     cla(handles.TimeVsDistance,'reset'); %reset PWV plot
     axes(handles.TimeVsDistance); hold on; %force axes to PWV plot
-    xlabel('Distance (mm)'); ylabel('Time Shift (ms)'); %label axes
+    xlabel('Centerline Distance (mm)'); ylabel('Time Shift (ms)'); %label axes
     sz = 30; %create marker sizes (filled in circles) of 30 pixels
     legendSet = {}; %initialize legend cell array
     if get(handles.ttpointRadio,'Value')
@@ -669,127 +783,139 @@ function TimeVsDistance_CreateFcn(hObject, eventdata, handles)
 function exportAnalysisButton_Callback(hObject, eventdata, handles)
     date = datestr(now); %get current date/time
     chopDate = [date(1:2) '-' date(4:6) '-' date(10:11) '-' date(13:14) date(16:17)]; %chop date up
-
-    flow = computeTTs(handles.flow,handles.global); %recalculate flow struct for each interp
-    numCompares = numel(flow);
-
-    distance = [0 cumsum(handles.centerline.PlaneDistances)];
-    distance = distance(1:numCompares);
-    ttpoint = [handles.flow.TTPoint]; 
-    ttfoot = [handles.flow.TTFoot];
-    ttupstroke = [handles.flow.TTUpstroke]; 
-    xcorr = [handles.flow.Xcorr];
-    ttaverage = mean([ttfoot; ttpoint; ttupstroke; xcorr],1); %get average time shift
-
-    Distances = abs(diff([distance 0])); %add zero at end to get full distance
-    TTPoint = [diff(ttpoint) sum(diff(ttpoint))];
-    TTFoot = [diff(ttfoot) sum(diff(ttfoot))];
-    TTUpstroke = [diff(ttupstroke) sum(diff(ttupstroke))];
-    Xcorr = [diff(xcorr) sum(diff(xcorr))];
-    TTaverage = [diff(ttaverage) sum(diff(ttaverage))];
-
-    % Make first column for excel file
-    %numCompares = length(Distances); %get number of PWV measurements
-    for d=1:(numCompares-1)
-        PLANES{d} = [flow(d).Name ' --> ' flow(d+1).Name]; %get names for Excel
-    end 
-    PLANES{numCompares} = [flow(1).Name ' --> ' flow(end).Name]; %get names for Excel
-    PLANES{numCompares+1} = 'FIT_PWV'; %These rows be for PWV fit parameters
-    PLANES{numCompares+2} = 'm (slope)';
-    PLANES{numCompares+3} = 'b (y-intercept)';
-    PLANES{numCompares+4} = 'R^2';
-
-    PWV_Point = NaN(numCompares+4,1); %add dummy rows to match PLANES size
-    PWV_Foot = NaN(numCompares+4,1);
-    PWV_Upstroke = NaN(numCompares+4,1);
-    PWV_Xcorr = NaN(numCompares+4,1);
-    PWV_Average = zeros(1,numCompares);
-
-    for i=1:numCompares
-        PWV_Point(i) = Distances(i)/TTPoint(i); %calculate pointwise PWVs (not fits)
-        PWV_Foot(i) = Distances(i)/TTFoot(i);
-        PWV_Upstroke(i) = Distances(i)/TTUpstroke(i);
-        PWV_Xcorr(i) = Distances(i)/Xcorr(i);
-        PWV_Average(i) = (PWV_Point(i)+PWV_Foot(i)+PWV_Upstroke(i)+PWV_Xcorr(i))/4; %get simple average of all PWVs
-    end 
-
-    [linePointFit,S] = polyfit(distance,ttpoint,1); %get linear regression fit for all points 
-    PWV_Point(numCompares+1) = 1/linePointFit(1); %calculate PWV (=1/slope)
-    PWV_Point(numCompares+2) = linePointFit(1); %get slope
-    PWV_Point(numCompares+3) = linePointFit(2); %get y-intercept
-    PWV_Point(numCompares+4) = (1 - (S.normr/norm(ttpoint - mean(ttpoint)))^2); %R^2
-
-    [lineFootFit,S] = polyfit(distance,ttfoot,1);
-    PWV_Foot(numCompares+1) = 1/lineFootFit(1);
-    PWV_Foot(numCompares+2) = lineFootFit(1);
-    PWV_Foot(numCompares+3) = lineFootFit(2);
-    PWV_Foot(numCompares+4) = (1 - (S.normr/norm(ttfoot - mean(ttfoot)))^2);
-
-    [lineUpstrokeFit,~] = polyfit(distance,ttupstroke,1);
-    PWV_Upstroke(numCompares+1) = 1/lineUpstrokeFit(1);
-    PWV_Upstroke(numCompares+2) = lineUpstrokeFit(1);
-    PWV_Upstroke(numCompares+3) = lineUpstrokeFit(2);
-    PWV_Upstroke(numCompares+4) = (1 - (S.normr/norm(ttupstroke - mean(ttupstroke)))^2);
-
-    [lineXcorrFit,~] = polyfit(distance,xcorr,1);
-    PWV_Xcorr(numCompares+1) = 1/lineXcorrFit(1);
-    PWV_Xcorr(numCompares+2) = lineXcorrFit(1);
-    PWV_Xcorr(numCompares+3) = lineXcorrFit(2);
-    PWV_Xcorr(numCompares+4) = (1 - (S.normr/norm(xcorr - mean(xcorr)))^2);
-
-    [lineAverageFit,~] = polyfit(distance,ttaverage,1);
-    PWV_Average(numCompares+1) = 1/lineAverageFit(1);
-    PWV_Average(numCompares+2) = lineAverageFit(1);
-    PWV_Average(numCompares+3) = lineAverageFit(2);
-    PWV_Average(numCompares+4) = (1 - (S.normr/norm(ttaverage - mean(ttaverage)))^2);
-    PWV_Average = PWV_Average';
-
-    Distances(numCompares+1:numCompares+4) = NaN;
-    TTPoint(numCompares+1:numCompares+4) = NaN;
-    TTFoot(numCompares+1:numCompares+4) = NaN;
-    TTUpstroke(numCompares+1:numCompares+4) = NaN;
-    Xcorr(numCompares+1:numCompares+4) = NaN;
-    TTaverage(numCompares+1:numCompares+4) = NaN;
-
-    PLANES = PLANES'; %Needed for excel, won't save name if ' in table call
-    Distances = Distances';
-    TTPoint = TTPoint';
-    TTFoot = TTFoot';
-    TTUpstroke = TTUpstroke';
-    Xcorr = Xcorr';
-    TTaverage = TTaverage';
-
-    % Make table for writing excel file
-    pwvTable = table(PLANES,Distances,TTPoint,TTFoot,TTUpstroke,Xcorr,TTaverage,PWV_Point,PWV_Foot,PWV_Upstroke,PWV_Xcorr,PWV_Average);
-    baseDir = handles.global.homeDir; %rejoin string to get name of folder one up from plane data
-    dataDir = ['DataAnalysis_' handles.global.dataType];
-
-    if ~exist([baseDir filesep dataDir],'dir') %if directory doesn't exist
-        mkdir([baseDir filesep dataDir]); %make it
-    end 
-    cd([baseDir filesep dataDir]); %go to it
-    writetable(pwvTable,['Summary_' chopDate '.xlsx'],'FileType','spreadsheet'); %write excel sheet for each interp
-    if strcmp(handles.global.interpType,'Gaussian')
-        saveTTplots(handles,flow);
-    end 
-    if ~exist('flow.mat','file')
-        save('flow.mat','flow')
-        save('pwvTable.mat','pwvTable')
-    end 
-    cd(handles.global.homeDir); %go back home  
-    clear PLANES %need to do this because PLANES will keep getting transposed
+    globals = handles.global;
     
-    cd([baseDir filesep dataDir]); %go to it
-    frame = getframe(handles.TimeVsDistance); %get snapshot of PWV plot 
-    imwrite(frame2im(frame),'PWVanalysisPlot.png'); %write out to PNG
-    pcDatasets = handles.pcDatasets;
-    save('pcDatasets.mat','pcDatasets');
-    cd(handles.global.homeDir); %go back home  
-    if ~exist('PWV_2DPC_Analysis','dir')
-        mkdir('PWV_2DPC_Analysis');
+    for a=1:2
+        flow = computeTTs(handles.flow,globals); %recalculate flow struct for each interp
+        numCompares = numel(flow);
+        handles.flow = flow;
+        guidata(hObject, handles);
+
+        distance = [0 cumsum(handles.centerline.PlaneDistances)];
+        distance = distance(1:numCompares);
+        ttpoint = [handles.flow.TTPoint]; 
+        ttfoot = [handles.flow.TTFoot];
+        ttupstroke = [handles.flow.TTUpstroke]; 
+        xcorr = [handles.flow.Xcorr];
+        ttaverage = mean([ttfoot; ttpoint; ttupstroke; xcorr],1); %get average time shift
+
+        Distances = abs(diff([distance 0])); %add zero at end to get full distance
+        TTPoint = [diff(ttpoint) sum(diff(ttpoint))];
+        TTFoot = [diff(ttfoot) sum(diff(ttfoot))];
+        TTUpstroke = [diff(ttupstroke) sum(diff(ttupstroke))];
+        Xcorr = [diff(xcorr) sum(diff(xcorr))];
+        TTaverage = [diff(ttaverage) sum(diff(ttaverage))];
+
+        % Make first column for excel file
+        %numCompares = length(Distances); %get number of PWV measurements
+        for d=1:(numCompares-1)
+            PLANES{d} = [flow(d).Name ' --> ' flow(d+1).Name]; %get names for Excel
+        end 
+        PLANES{numCompares} = [flow(1).Name ' --> ' flow(end).Name]; %get names for Excel
+        PLANES{numCompares+1} = 'FIT_PWV'; %These rows be for PWV fit parameters
+        PLANES{numCompares+2} = 'm (slope)';
+        PLANES{numCompares+3} = 'b (y-intercept)';
+        PLANES{numCompares+4} = 'R^2';
+
+        PWV_Point = NaN(numCompares+4,1); %add dummy rows to match PLANES size
+        PWV_Foot = NaN(numCompares+4,1);
+        PWV_Upstroke = NaN(numCompares+4,1);
+        PWV_Xcorr = NaN(numCompares+4,1);
+        PWV_Average = zeros(1,numCompares);
+
+        for i=1:numCompares
+            PWV_Point(i) = Distances(i)/TTPoint(i); %calculate pointwise PWVs (not fits)
+            PWV_Foot(i) = Distances(i)/TTFoot(i);
+            PWV_Upstroke(i) = Distances(i)/TTUpstroke(i);
+            PWV_Xcorr(i) = Distances(i)/Xcorr(i);
+            PWV_Average(i) = (PWV_Point(i)+PWV_Foot(i)+PWV_Upstroke(i)+PWV_Xcorr(i))/4; %get simple average of all PWVs
+        end 
+
+        [linePointFit,S] = polyfit(distance,ttpoint,1); %get linear regression fit for all points 
+        PWV_Point(numCompares+1) = 1/linePointFit(1); %calculate PWV (=1/slope)
+        PWV_Point(numCompares+2) = linePointFit(1); %get slope
+        PWV_Point(numCompares+3) = linePointFit(2); %get y-intercept
+        PWV_Point(numCompares+4) = (1 - (S.normr/norm(ttpoint - mean(ttpoint)))^2); %R^2
+
+        [lineFootFit,S] = polyfit(distance,ttfoot,1);
+        PWV_Foot(numCompares+1) = 1/lineFootFit(1);
+        PWV_Foot(numCompares+2) = lineFootFit(1);
+        PWV_Foot(numCompares+3) = lineFootFit(2);
+        PWV_Foot(numCompares+4) = (1 - (S.normr/norm(ttfoot - mean(ttfoot)))^2);
+
+        [lineUpstrokeFit,~] = polyfit(distance,ttupstroke,1);
+        PWV_Upstroke(numCompares+1) = 1/lineUpstrokeFit(1);
+        PWV_Upstroke(numCompares+2) = lineUpstrokeFit(1);
+        PWV_Upstroke(numCompares+3) = lineUpstrokeFit(2);
+        PWV_Upstroke(numCompares+4) = (1 - (S.normr/norm(ttupstroke - mean(ttupstroke)))^2);
+
+        [lineXcorrFit,~] = polyfit(distance,xcorr,1);
+        PWV_Xcorr(numCompares+1) = 1/lineXcorrFit(1);
+        PWV_Xcorr(numCompares+2) = lineXcorrFit(1);
+        PWV_Xcorr(numCompares+3) = lineXcorrFit(2);
+        PWV_Xcorr(numCompares+4) = (1 - (S.normr/norm(xcorr - mean(xcorr)))^2);
+
+        [lineAverageFit,~] = polyfit(distance,ttaverage,1);
+        PWV_Average(numCompares+1) = 1/lineAverageFit(1);
+        PWV_Average(numCompares+2) = lineAverageFit(1);
+        PWV_Average(numCompares+3) = lineAverageFit(2);
+        PWV_Average(numCompares+4) = (1 - (S.normr/norm(ttaverage - mean(ttaverage)))^2);
+        PWV_Average = PWV_Average';
+
+        Distances(numCompares+1:numCompares+4) = NaN;
+        TTPoint(numCompares+1:numCompares+4) = NaN;
+        TTFoot(numCompares+1:numCompares+4) = NaN;
+        TTUpstroke(numCompares+1:numCompares+4) = NaN;
+        Xcorr(numCompares+1:numCompares+4) = NaN;
+        TTaverage(numCompares+1:numCompares+4) = NaN;
+
+        PLANES = PLANES'; %Needed for excel, won't save name if ' in table call
+        Distances = Distances';
+        TTPoint = TTPoint';
+        TTFoot = TTFoot';
+        TTUpstroke = TTUpstroke';
+        Xcorr = Xcorr';
+        TTaverage = TTaverage';
+
+        % Make table for writing excel file
+        pwvTable = table(PLANES,Distances,TTPoint,TTFoot,TTUpstroke,Xcorr,TTaverage,PWV_Point,PWV_Foot,PWV_Upstroke,PWV_Xcorr,PWV_Average);
+        baseDir = globals.homeDir; %rejoin string to get name of folder one up from plane data
+        dataDir = ['DataAnalysis_' globals.dataType];
+
+        set(handles.exportDone,'String',['Saving Dataset ' num2str(a) ' ...']);
+        if ~exist([baseDir filesep dataDir],'dir') %if directory doesn't exist
+            mkdir([baseDir filesep dataDir]); %make it
+        end 
+        cd([baseDir filesep dataDir]); %go to it
+        mkdir(globals.analysisType);
+        cd(globals.analysisType);
+        writetable(pwvTable,['Summary_' chopDate '.xlsx'],'FileType','spreadsheet'); %write excel sheet for each interp
+        %if strcmp(globals.interpType,'Gaussian')
+            saveTTplots(handles,flow);
+        %end 
+        %if ~exist('flow.mat','file')
+            save('flow.mat','flow')
+            save('pwvTable.mat','pwvTable');
+            save('globals.mat','globals');
+        %end 
+        cd(globals.homeDir); %go back home  
+        clear PLANES %need to do this because PLANES will keep getting transposed
+
+        cd([baseDir filesep dataDir]); %go to it
+        frame = getframe(handles.TimeVsDistance); %get snapshot of PWV plot 
+        imwrite(frame2im(frame),'PWVanalysisPlot.png'); %write out to PNG
+        pcDatasets = handles.pcDatasets;
+        save('pcDatasets.mat','pcDatasets');
+        cd(globals.homeDir); %go back home  
+        if ~exist('PWV_2DPC_Analysis-v2','dir')
+            mkdir('PWV_2DPC_Analysis-v2');
+        end 
+        movefile(dataDir,'PWV_2DPC_Analysis-v2');
+        handles.globals.analysisType = 'Relative_Time';
+        globals.analysisType = 'Relative_Time';
+        guidata(hObject, handles);
     end 
-    movefile(dataDir,'PWV_2DPC_Analysis');
-    movefile(['ROIimages_' handles.global.dataType],'PWV_2DPC_Analysis');
+    movefile(['ROIimages_' handles.global.dataType],'PWV_2DPC_Analysis-v2');
     set(handles.exportDone,'String','Export Completed!');
 
     guidata(hObject, handles);
@@ -899,30 +1025,36 @@ function updatePCImages(handles)
     
 % --- "Time to" calculations (TTPoint, TTUpstroke, TTFoot, Xcorr)
 function flow = computeTTs(flow,globals)
-    pgShift = globals.pgShift;
     numROIs = globals.totalROIs;
     for i=1:numROIs %for each ROI
         if globals.startAnalyzing %if we're analyzing (put here because we call computePWV in interpolatePopup)
             switch globals.interpType  %find the appropriate interp data
                 case 'None'
-                    flowTemp = flow(i).Uninterp.meanROI;
+                    flowTemp = flow(i).Interp.mean_v;
                 case 'Gaussian'
-                    flowTemp = flow(i).Gaussian.meanROI;  
+                    flowTemp = flow(i).Gaussian.mean_v;  
+                case 'Shifted'
+                    flowTemp = flow(i).Shifted.mean_v;  
             end 
-        else %else, we just use uninterpolated data
-            flowTemp = flow(i).Uninterp.meanROI;
+        else %else, we just use shifted data
+            flowTemp = flow(i).Shifted.mean_v;  
         end 
         
         if mean(flowTemp)<0 %if our flow curve is mainly negative
             flowTemp = -1*flowTemp; %flip it upside down so we can find time shifts
         end 
         
-        if pgShift %if we want to shift our waveform over
-            flowTemp = circshift(flowTemp,round(length(flowTemp)/3)); %shift by half cycle
+        if strcmp(globals.analysisType,'Absolute_Time')
+            times = flow(i).Interp.times; %get individual time frames (ms)
+        elseif strcmp(globals.analysisType,'Relative_Time')
+            times = flow(1).Interp.times; %use only 1st time frames (ms)
+            flow(i).Raw.times = flow(1).Raw.times;
+            flow(i).Interp.times = flow(1).Interp.times;
+            flow(i).Gaussian.times = flow(1).Gaussian.times;
+            flow(i).Shifted.times = flow(1).Shifted.times;
+        else
+            disp('Please select correct data analysis type (Absolute_Time or Relative_Time)');
         end 
-                
-        % times = flow(1).Uninterp.times;
-        times = flow(i).Uninterp.times; %get time frames (ms)
         timeres = times(2)-times(1); %temporal resolution (ms)
         curvePoints(i).times = times;
         curvePoints(i).timeres = timeres;
@@ -932,123 +1064,158 @@ function flow = computeTTs(flow,globals)
         curvePoints(i).maxPeakVelIdx = maxPeakVelIdx; %add max point to curvePoints struct
         curvePoints(i).maxPeakVel = maxPeakVel; %add max velocity to curvePoints struct
         
-        upstroke = normalize(upstroke,'range');
-        [~,SeventyPointIdx] = min(abs(upstroke-0.70)); %get point at 70% max peak
+        [minPeakVel,minPeakVelIdx] = min(upstroke); %find max velocity value and its location
+        curvePoints(i).minPeakVelIdx = minPeakVelIdx; %add max point to curvePoints struct
+        curvePoints(i).minPeakVel = minPeakVel; %add max velocity to curvePoints struct
+        
+        upstroke = normalize(upstroke,'range'); %baseline correct
+        
+        [~,SeventyPointIdx] = min(abs(upstroke - 0.70)); %get point at 70% max peak
         curvePoints(i).SeventyPointIdx = SeventyPointIdx; %add to curvePoints struct
         curvePoints(i).SeventyPoint = flowTemp(SeventyPointIdx); %add 70% flow value to curvePoints
         
-        [~,TwentyPointIdx] = min(abs(upstroke-0.30)); %get point at 30% max peak
-        curvePoints(i).TwentyPointIdx = TwentyPointIdx; %add to curvePoints struct
-        curvePoints(i).TwentyPoint = flowTemp(TwentyPointIdx);
+        [~,ThirtyPointIdx] = min(abs(upstroke - 0.30)); %get point at 30% max peak
+        curvePoints(i).ThirtyPointIdx = ThirtyPointIdx; %add to curvePoints struct
+        curvePoints(i).ThirtyPoint = flowTemp(ThirtyPointIdx);
         
-        [~,FiftyPointIdx] = min(abs(upstroke-0.50)); %get point at 50% max peak    
+        [~,FiftyPointIdx] = min(abs(upstroke - 0.50)); %get point at 50% max peak    
         curvePoints(i).FiftyPointIdx = FiftyPointIdx;
         curvePoints(i).FiftyPoint = flowTemp(FiftyPointIdx);
 
         flows(i,:) = normalize(flowTemp,'range'); %normalize curve from here on
+        %flows(i,:) = flowTemp;
     end      
     
-    % TTPoint - time to point calculation
-    for i=1:numROIs
-        tp = curvePoints(i).times(curvePoints(i).FiftyPointIdx); %get time at 50% peak (ms) 
-        flow(i).TTPoint = tp; %add to flow struct
-    end    
+    %check if were missing the upslope (happens frequently with PG gating)
+    peakAtStart = [curvePoints.maxPeakVelIdx]==1; 
     
-    % TTUpstroke - time to upstroke calculation
-    for i=1:numROIs
-        [sigmoid,sigTimes,tp] = sigFit(flows(i,:),curvePoints(i).times); %see sigFit function below
-        flow(i).TTUpstroke = tp; %add to flow struct
-        flow(i).SigmoidFit = sigmoid;
-        flow(i).SigmoidTimes = sigTimes;
-    end  
-  
-    % TTFoot - time to foot calculation
-    for i=1:numROIs
-        leftIdx = curvePoints(i).TwentyPointIdx;
-        rightIdx = curvePoints(i).SeventyPointIdx;
-        flowSeg = flows(i,leftIdx:rightIdx);
-        timeSeg = curvePoints(i).times(leftIdx:rightIdx);
-        p1 = polyfit(timeSeg,flowSeg,1);
-        tp = -(p1(2)/p1(1));
-        flow(i).TTFoot = tp; %add to flow struct
-        flow(i).P1 = p1;
-    end  
-  
-    % XCorr - cross correlation calculation
-    %since we need 2 curves to get shift, set 1st time shift = 0
-    flow(1).Xcorr = curvePoints(1).TwentyPointIdx;
-    for i=2:numROIs
-        flowSeg1 = flows(i-1,:);
-        timeSeg1 = curvePoints(i-1).times;
-        lastPoint1 = curvePoints(i-1).times(end); %get time endpoint on first curve
-        flowSeg2 = flows(i,:); %chop second curve between 1 and right index
-        timeSeg2 = curvePoints(i).times; %get times 
-        lastPoint2 = curvePoints(i).times(end); %get time endpoint on second curve
-        if lastPoint2>lastPoint1
-            flowSeg2 = interp1(timeSeg2,flowSeg2,timeSeg1);
-            timeres = curvePoints(i-1).timeres;
-        else
-            flowSeg1 = interp1(timeSeg1,flowSeg1,timeSeg2);
-            timeres = curvePoints(i).timeres;
-        end
-        [Xcorrs,lags] = xcorr(flowSeg2,flowSeg1,'normalized'); %perform cross correlation between flow curves
-        [~,maxLag] = max(Xcorrs);
-        shift = lags(maxLag);
-        flow(i).Xcorr = flow(i-1).Xcorr + timeres*shift; %cumulative sum from last time
-    end  
-    
-    
- 
-% --- Turn PolyLine into SplineLine    
-function Y = interppolygon(X,N)
-    if nargin < 2 || N < 2
-        N = 2; %if only one arg or too small N, just assume 2
-    end
-    nDim = size(X,2); %should be 2
-    dx = 0;
-    
-    for dim = 1:nDim
-        dx = dx + diff(X(:,dim)).^2 ; %get sum of squares in each dim
-    end
-    
-    lengthBetweenPoints = sqrt(dx); %now get distance
-    lengthLine = sum(lengthBetweenPoints);
-    origMetric = [0; cumsum(lengthBetweenPoints/lengthLine)];
-    
-    interpMetric = (0:(1/(N-1)):1)';
-    Y = interp1(origMetric,X,interpMetric,'makima'); %makima seems to work well
-    %Y = csaps([0 times times(end)+times(1)],[0 meanROI 0],0.0001,timesInterp);
-    
+    if sum(peakAtStart)
+        for i=1:numROIs
+            flow(i).TTPoint = NaN; %add to flow struct
+            flow(i).TTUpstroke = NaN;
+            flow(i).TTFoot = NaN;
+            flow(i).Xcorr = NaN;
+        end   
+    else
+        % TTPoint - time to point calculation
+        for i=1:numROIs
+            tp = curvePoints(i).times(curvePoints(i).FiftyPointIdx); %get time at 50% peak (ms) 
+            flow(i).TTPoint = tp; %add to flow struct
+        end    
+        
+        % TTFoot - time to foot calculation
+        for i=1:numROIs
+            leftIdx = curvePoints(i).ThirtyPointIdx;
+            rightIdx = curvePoints(i).SeventyPointIdx;
+            flowSeg = flows(i,leftIdx:rightIdx);
+            timeSeg = curvePoints(i).times(leftIdx:rightIdx);
+            offset = flows(i,curvePoints(1).minPeakVelIdx); %baseline offset
+            p1 = polyfit(timeSeg,flowSeg,1);  %y=mx+b
+            tp = (offset - p1(2))/p1(1);  %offset=mx+b -> x=(offset-b)/m
+            flow(i).TTFoot = tp; %add to flow struct
+            flow(i).P1 = p1;
+        end  
 
+        % TTCurvature - time to maximum curvature calculation
+        % for i=1:numROIs
+        %     leftIdx = curvePoints(i).minPeakVelIdx;
+        %     rightIdx = curvePoints(i).maxPeakVelIdx;
+        %     flowSeg = flows(i,leftIdx:rightIdx);
+        %     timeSeg = curvePoints(i).times(leftIdx:rightIdx);
+        %     dy = diff(flowSeg,1);  %dy/dt
+        %     dy(end) = [];
+        %     dx = diff(timeSeg,1);  %dx/dt = delta_t
+        %     dx(end) = [];
+        %     ddy = diff(flowSeg,2);  %ddy/dt (ddx/dt=0)
+        %     curvature = ddy.*dx./(dx.^2 + dy.^2).^(3/2);
+        %     [~,tIdx] = max(curvature);
+        %     tp = timeSeg(tIdx-2);  %-2 accounts for dimension change after derivative
+        %     flow(i).TTCurvature = tp; %max curvature of flow curve
+        % end  
+        
+        % TTUpstroke - time to upstroke calculation (DOI: 10.1002/jmri.22570)
+        for i=1:numROIs
+            [sigmoid,sigTimes,tp,midpt] = sigFit(flows(i,:),curvePoints(i).times); %see sigFit function below
+            flow(i).TTUpstroke = tp; %start of upstroke
+            % flow(i).TTUpstroke = midpt; %midpoint of sigmoid
+            flow(i).SigmoidFit = sigmoid;
+            flow(i).SigmoidTimes = sigTimes;
+        end 
+        
+        % XCorr - cross correlation calculation
+        %we need 2 curves to get shift, set 1st time to arb. reference
+        flow(1).Xcorr = curvePoints(1).ThirtyPointIdx;
+        for i=2:numROIs
+            flowSeg1 = flows(i-1,:);
+            timeSeg1 = curvePoints(i-1).times;
+            lastPoint1 = curvePoints(i-1).times(end); %get time endpoint on first curve
+            flowSeg2 = flows(i,:); %chop second curve between 1 and right index
+            timeSeg2 = curvePoints(i).times; %get times 
+            lastPoint2 = curvePoints(i).times(end); %get time endpoint on second curve
+            if lastPoint2>lastPoint1  %make sure times are aligned
+                flowSeg2 = interp1(timeSeg2,flowSeg2,timeSeg1);
+                timeres = curvePoints(i-1).timeres;
+            else
+                flowSeg1 = interp1(timeSeg1,flowSeg1,timeSeg2);
+                timeres = curvePoints(i).timeres;
+            end
+            
+            % Homemade cross-correlation (circshift, not FFT-based)
+            % L = (1:length(flowSeg2))-(length(flowSeg2)/2);
+            % for k=1:length(L)
+            %     xc(i) = sum(flowSeg2 .* circshift(flowSeg1,L(k)));
+            % end 
+            % [~,idx] = max(xc);
+            % shift = L(idx);
+            
+            %Built-in cross-correlation (fails if peaks are near edge)
+            [Xcorrs,lags] = xcorr(flowSeg2,flowSeg1,'normalized'); %perform cross correlation between flow curves
+            [~,maxLag] = max(Xcorrs);
+            shift = lags(maxLag);
+            flow(i).Xcorr = flow(i-1).Xcorr + timeres*shift; %cumulative sum from last time
+        end  
+    end 
+    
     
 % --- Plot Velocities    
 function plotVelocity(handles)
     cla(handles.velocityPlot,'reset'); %reset axes
     axes(handles.velocityPlot); %make sure we plot on the right axis
     
-    times = handles.pcDatasets(1).ROIdataUninterp(1).times;
+    times = handles.pcDatasets(1).Interp(1).times;
     plot(times, zeros(1,length(times)) ,'Color','black','LineWidth',1.5); %line of y=0 (for visual reference)
     % Note that above we assume same time scale for each plane (MR scan)
     xlim([min(times) max(times)]);
     legendSet = {'Baseline'}; %add baseline to legend names
     for i=1:numel(handles.pcDatasets) %for all planes
-        if isstruct(handles.pcDatasets(i).ROIdataUninterp) %if we've made ROI data for this dataset
-            for j=1:length(handles.pcDatasets(i).ROIdataUninterp) %for each ROI
-                legendSet{end+1} = handles.pcDatasets(i).ROIinfo(j).Name; %add name of ROI to list
+        if isstruct(handles.pcDatasets(i).Interp) %if we've made ROI data for this dataset
+            for j=1:length(handles.pcDatasets(i).Interp) %for each ROI
+                legendSet{end+1} = handles.pcDatasets(i).Raw(j).name; %add name of ROI to list
                 switch handles.global.interpType %check what interpolation we are using
                     case 'None'
-                        velocity = handles.pcDatasets(i).ROIdataUninterp(j).meanROI; %grab mean velocity
-                        %times = handles.pcDatasets(i).ROIdataUninterp(j).times;
-                        stdv = handles.pcDatasets(i).ROIdataUninterp(j).stdvROI; %grab stdv of velocity
+                        velocity = handles.pcDatasets(i).Interp(j).mean_v; %grab mean velocity
+                        if strcmp(handles.global.analysisType,'Absolute_Time')
+                            times = handles.pcDatasets(i).Interp(j).times;
+                        else
+                            times = handles.pcDatasets(1).Interp(1).times;
+                        end 
+                        stdv = handles.pcDatasets(i).Interp(j).stdv_v; %grab stdv of velocity
                     case 'Gaussian'
-                        velocity = handles.pcDatasets(i).ROIdataGaussian(j).meanROI;
-                        %times = handles.pcDatasets(i).ROIdataUninterp(j).times;
-                        stdv = handles.pcDatasets(i).ROIdataGaussian(j).stdvROI;
-                end 
-                
-                if get(handles.pgShiftRadio,'Value') %check if we need to shift waveform
-                    velocity = circshift(velocity,round(length(velocity)/3)); %shift by half cycle
-                    stdv = circshift(stdv,round(length(stdv)/3));
+                        velocity = handles.pcDatasets(i).Gaussian(j).mean_v;
+                        if strcmp(handles.global.analysisType,'Absolute_Time')
+                            times = handles.pcDatasets(i).Gaussian(j).times;
+                        else
+                            times = handles.pcDatasets(1).Gaussian(1).times;
+                        end 
+                        stdv = handles.pcDatasets(i).Gaussian(j).stdv_v;
+                    case 'Shifted'
+                        velocity = handles.pcDatasets(i).Shifted(j).mean_v;
+                        if strcmp(handles.global.analysisType,'Absolute_Time')
+                            times = handles.pcDatasets(i).Shifted(j).times;
+                        else
+                            times = handles.pcDatasets(1).Shifted(1).times;
+                        end 
+                        stdv = handles.pcDatasets(i).Shifted(j).stdv_v;
                 end 
 
                 if mean(velocity)<0 %if we are mainly negative velocities (as in descending aorta)
@@ -1074,15 +1241,14 @@ function plotVelocity(handles)
 
     
 % --- Sigmoid Fit Function
-function [sigmoid,t,t1] = sigFit(meanROI,times)
+function [sigmoid,t,t1,t2] = sigFit(mean_v,times)
 %%% See the following article by Anas Dogui in JMRI:
-% Measurement of Aortic Arch Pulse Wave Velocity in Cardiovascular MR:
-% Comparison of Transit Time Estimators and Description of a New Approach
+% https://pubmed.ncbi.nlm.nih.gov/21591000/
 
-    [~,peak] = max(meanROI); %find max
-    upslope = meanROI(1:peak); %find upslope region of flow curve
-    t0 = times(1:peak);
-    t = linspace(1,times(peak),1000); %interpolate even more
+    [~,MAX] = max(mean_v); %find max
+    upslope = mean_v(1:MAX); %find upslope region of flow curve
+    t0 = times(1:MAX);
+    t = linspace(1,times(MAX),1000); %interpolate even more
     upslope = interp1(t0,upslope,t); %interpolate upslope
     upslope = rescale(upslope); %normalize from 0 to 1
     [~,MIN] = min(upslope);
@@ -1099,7 +1265,8 @@ function [sigmoid,t,t1] = sigFit(meanROI,times)
     opts = optimset('Display', 'off'); %turn off display output
     c = lsqnonlin(sigmoidModel,c0,[],[],opts); %get nonlinear LSQ solution
     sigmoid = c(1) + ( (c(2)-c(1)) ) ./ ( 1+exp((t-c(3))./c(4)) ); %calculate our sigmoid fit with our new params
-
+    t2 = c(3); %midpoint of sigmoid
+    
     dy = diff(sigmoid,1);
     dy(end) = [];
     dx = diff(t,1);
@@ -1107,34 +1274,36 @@ function [sigmoid,t,t1] = sigFit(meanROI,times)
     ddy = diff(sigmoid,2);
     curvature = ddy.*dx./(dx.^2 + dy.^2).^(3/2);
     [~,tIdx] = max(curvature);
-    t1 = t(tIdx);
+    t1 = t(tIdx); %point of max curvature of sigmoid
 
     
     
 % --- Condense and organize flow data obtained from ROIs
 function flow = organizeFlowInfo(handles)
-% This function is designed to pull apart handles.pcDatasets. It is
+% This function is designed to parse handles.pcDatasets. It is
 % difficult to do analysis on the handles structure because some slices
 % have 2 ROIs. It is much easier to have a structure that pulls out each
 % ROI. It only adds a bit of memory since we aren't saving the raw images.
     count = 1; %overall iterator
     for i=1:numel(handles.pcDatasets) %for each PC dataset
-        if isstruct(handles.pcDatasets(i).ROIdataUninterp) %do we have data?
-            if length(handles.pcDatasets(i).ROIdataUninterp)==1 %if we just have one ROI
-                flow(count).Name = handles.pcDatasets(i).ROIinfo.Name; %pull only relevant info for PWV calcs
-                flow(count).ROIinfo = handles.pcDatasets(i).ROIinfo;
+        if isstruct(handles.pcDatasets(i).Interp) %do we have data?
+            if length(handles.pcDatasets(i).Interp)==1 %if we just have one ROI
+                flow(count).Name = handles.pcDatasets(i).Raw.name; %pull only relevant info for PWV calcs
+                flow(count).Raw = handles.pcDatasets(i).Raw;
                 flow(count).HeaderInfo = handles.pcDatasets(i).Info;
-                flow(count).Uninterp = handles.pcDatasets(i).ROIdataUninterp;
-                flow(count).Gaussian = handles.pcDatasets(i).ROIdataGaussian;
+                flow(count).Interp = handles.pcDatasets(i).Interp;
+                flow(count).Gaussian = handles.pcDatasets(i).Gaussian;
+                flow(count).Shifted = handles.pcDatasets(i).Shifted;
                 flow(count).pcDatasetREF = [i,1];
                 count = count+1;
             else 
-                for j=1:length(handles.pcDatasets(i).ROIdataUninterp) %if we have more than one ROI
-                    flow(count).Name = handles.pcDatasets(i).ROIinfo(j).Name; %parse into individual ROIs in flow struct
-                    flow(count).ROIinfo = handles.pcDatasets(i).ROIinfo(j);
+                for j=1:length(handles.pcDatasets(i).Interp) %if we have more than one ROI
+                    flow(count).Name = handles.pcDatasets(i).Raw(j).name; %parse into individual ROIs in flow struct
+                    flow(count).Raw = handles.pcDatasets(i).Raw(j);
                     flow(count).HeaderInfo = handles.pcDatasets(i).Info;
-                    flow(count).Uninterp = handles.pcDatasets(i).ROIdataUninterp(j);
-                    flow(count).Gaussian = handles.pcDatasets(i).ROIdataGaussian(j);
+                    flow(count).Interp = handles.pcDatasets(i).Interp(j);
+                    flow(count).Gaussian = handles.pcDatasets(i).Gaussian(j);
+                    flow(count).Shifted = handles.pcDatasets(i).Shifted(j);
                     flow(count).pcDatasetREF = [i,j];
                     count = count+1;
                 end 
@@ -1142,107 +1311,105 @@ function flow = organizeFlowInfo(handles)
         end 
     end 
 
-    
-    
+% --- Save Time-To Plots for record-keeping and debugging
  function saveTTplots(handles,flow)   
-    times = handles.pcDatasets(1).ROIdataUninterp(1).times;
+    times = flow(1).Interp.times;
     figure('units','normalized','outerposition',[0 0 1 1]); 
-    plot(times, zeros(1,length(times)) ,'Color','black','LineWidth',1.5); %line of y=0 (for visual reference)
     % Note that above we assume same time scale for each plane (MR scan)
     xlim([min(times) max(times)]);
-    legendSet = {'Baseline'}; %add baseline to legend names
+    legendSet = {}; %add baseline to legend names
     count = 1;
-    for i=1:numel(handles.pcDatasets) %for all planes
-        if isstruct(handles.pcDatasets(i).ROIdataUninterp) %if we've made ROI data for this dataset
-            for j=1:length(handles.pcDatasets(i).ROIdataUninterp) %for each ROI
-                legendSet{end+1} = handles.pcDatasets(i).ROIinfo(j).Name; %add name of ROI to list
-                switch handles.global.interpType %check what interpolation we are using
-                    case 'None'
-                        vTemp = handles.pcDatasets(i).ROIdataUninterp(j).meanROI; %grab mean velocity
-                    case 'Gaussian'
-                        vTemp = handles.pcDatasets(i).ROIdataGaussian(j).meanROI;
-                end 
-                
-                if get(handles.pgShiftRadio,'Value') %check if we need to shift waveform
-                    vTemp = circshift(vTemp,round(length(vTemp)/3)); %shift by half cycle
-                end 
-
-                if mean(vTemp)<0
-                    vTemp = -1*vTemp;
-                end
-
-                [maxVel,maxVelIdx] = max(vTemp); %find max velocity value and its location
-                upstroke = vTemp(1:maxVelIdx); %define 'upstroke' region of the flow curve
-                minVel = min(upstroke); %find max velocity value and its location
-                vTemp = (vTemp-minVel)/(maxVel-minVel);
-
-                hold on; plot(times,vTemp);
-                velocity(count,:) = vTemp;
-                count = count+1;
-            end 
+    for i=1:numel(flow) %for all planes
+        switch handles.global.interpType %check what interpolation we are using
+            case 'None'
+                vTemp = flow(i).Interp.mean_v; %grab mean velocity
+                timeTemp = flow(i).Interp.times;
+            case 'Gaussian'
+                vTemp = flow(i).Gaussian.mean_v; %grab mean velocity
+                timeTemp = flow(i).Gaussian.times;
+            case 'Shifted'
+                vTemp = flow(i).Shifted.mean_v; %grab mean velocity
+                timeTemp = flow(i).Shifted.times;
         end 
+
+        if mean(vTemp)<0
+            vTemp = -1*vTemp;
+        end
+        vTemp = normalize(vTemp,'range');
+
+        hold on; plot(timeTemp,vTemp);
+        velocity(count,:) = vTemp;
+        times(count,:) = timeTemp;
+        count = count+1;
     end 
+    wtime = 1.5;
     legend(legendSet,'Location','northeastoutside','AutoUpdate','off');
     xlabel('Time (ms)'); 
-    ylim([0 1]);
+    ylim([0 1.05]);
     ylabel('Normalized Mean Velocity in ROI (mm/s)'); %set axes labels
     text(50,1.05,'Note: Waveforms may be distorted if HR different between scans!')
 
     ttp = [flow.TTPoint];
     for i=1:length(ttp)
-        [~,idx] = min( abs(times-ttp(i)) );
-        h(i) = scatter(times(idx),velocity(i,idx),'k','filled');
-        h2(i) = scatter(times(idx),0,'k');
-        h3(i) = plot([times(idx) times(idx)],[velocity(i,idx),0],':k');
+        [~,idx] = min( abs(times(i,:)-ttp(i)) );
+        h(i) = scatter(times(i,idx),velocity(i,idx),'k','filled');
+        h2(i) = scatter(times(i,idx),0,'k');
+        h3(i) = plot([times(i,idx) times(i,idx)],[velocity(i,idx),0],':k');
     end 
     title('Time-To-Point');
     frame = getframe(gcf);
     imwrite(frame2im(frame),[pwd filesep 'TTPoint.png']);
-    
+    pause(wtime)
     set(h,'Visible','off'); set(h2,'Visible','off'); set(h3,'Visible','off')
     
     ttf = [flow.TTFoot];
     for i=1:length(ttf)
-        [~,idx] = min( abs(times-ttf(i)) );
-        [scale,idx2] = max(velocity(i,:));
+        [~,idx] = min( abs(times(i,:)-ttf(i)) );
+        [~,idx2] = max(velocity(i,:));
         P1 = flow(i).P1;
-        x = times(idx:idx2);
+        x = times(i,idx:idx2);
         y = P1(1)*x + P1(2);
         h(i) = plot(x,y,'k');
-        h2(i) = scatter(times(idx),0,'k');
+        h2(i) = scatter(times(i,idx),0,'k');
     end 
     title('Time-To-Foot');
     frame = getframe(gcf);
     imwrite(frame2im(frame),[pwd filesep 'TTFoot.png']);
-    
+    pause(wtime)
+
     set(h,'Visible','off'); set(h2,'Visible','off');
         
     ttu = [flow.TTUpstroke];
     for i=1:length(ttu)
-        [~,idx] = min( abs(times-ttu(i)) );
-        [scale,~] = max(velocity(i,:));
-        h(i) = scatter(times(idx),velocity(i,idx),'k','filled');
-        h2(i) = scatter(times(idx),0,'k');
-        h3(i) = plot([times(idx) times(idx)],[velocity(i,idx),0],':k');
-        h4(i) = plot(flow(i).SigmoidTimes,flow(i).SigmoidFit,'.k');
+        [~,idx] = min( abs(times(i,:)-ttu(i)) );
+        [~,maxIdx] = max(velocity(i,:));
+        upstroke = velocity(i,1:maxIdx);
+        [minVel,~] = min(upstroke);
+        h(i) = scatter(times(i,idx),velocity(i,idx),'k','filled');
+        h2(i) = scatter(times(i,idx),0,'k');
+        h3(i) = plot([times(i,idx) times(i,idx)],[velocity(i,idx),0],':k');
+        sigT = flow(i).SigmoidTimes;
+        sig = flow(i).SigmoidFit;
+        sigShift = sig - sig*minVel + minVel;
+        h4(i) = plot(sigT,sigShift,'.k');
     end 
     title('Time-To-Upstroke');
     frame = getframe(gcf);
     imwrite(frame2im(frame),[pwd filesep 'TTUpstroke.png']);
-    
+    pause(wtime)
     set(h,'Visible','off'); set(h2,'Visible','off'); set(h3,'Visible','off'); set(h4,'Visible','off');
     
     xcorr = [flow.Xcorr];
     for i=1:length(xcorr)
-        [~,idx] = min( abs(times-xcorr(i)) );
-        h(i) = scatter(times(idx),velocity(i,idx),'k','filled');
-        h2(i) = scatter(times(idx),0,'k');
-        h3(i) = plot([times(idx) times(idx)],[velocity(i,idx),0],':k');
+        [~,idx] = min( abs(times(i,:)-xcorr(i)) );
+        h(i) = scatter(times(i,idx),velocity(i,idx),'k','filled');
+        h2(i) = scatter(times(i,idx),0,'k');
+        h3(i) = plot([times(i,idx) times(i,idx)],[velocity(i,idx),0],':k');
     end 
     title('Cross Correlation Time Lag');
     frame = getframe(gcf);
     imwrite(frame2im(frame),[pwd filesep 'Xcorr.png']);
-    
+    pause(wtime)
     set(h,'Visible','off'); set(h2,'Visible','off'); set(h3,'Visible','off')
     
     hold off; close(gcf);   
@@ -1259,3 +1426,11 @@ function v = load_dat(name, res)
     % Reads in as short, reshapes by image res.
     v = reshape(fread(fid,'short=>single'),res);
     fclose(fid);
+
+
+
+
+
+
+
+
